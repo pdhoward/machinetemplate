@@ -11,3 +11,5 @@ export interface Message {
     }
   }
 } 
+
+export type SessionStatus = "DISCONNECTED" | "CONNECTING" | "CONNECTED";
