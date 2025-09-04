@@ -1,16 +1,11 @@
-"use client"
+"use client";
 
-import React, { useEffect, useState, useRef } from "react"
-import useWebRTCAudioSession from "@/hooks/use-webrtc"
-import { tools } from "@/lib/tools"
-import { Welcome } from "@/components/welcome"
-import { VoiceSelector } from "@/components/voice-select"
-import { BroadcastButton } from "@/components/broadcast-button"
-import { StatusDisplay } from "@/components/status"
-import { TokenUsageDisplay } from "@/components/token-usage"
-import { MessageControls } from "@/components/message-controls"
-import { ToolsEducation } from "@/components/tools-education"
-import { TextInput } from "@/components/text-input"
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useWebRTC } from "@/hooks/useWebRTC";
+import { VoiceSelector } from "@/components/voice-select";
+import { TokenUsageDisplay } from "@/components/token-usage";
+import { MessageControls } from "@/components/message-controls";
+import { TextInput } from "@/components/text-input";
 import {
   Phone,
   PhoneOff,
@@ -20,80 +15,227 @@ import {
   UserPlus,
   FileOutput,
   Download,
-} from 'lucide-react';
-import { motion } from "framer-motion"
-import { useToolsFunctions } from "@/hooks/use-tools"
+} from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { motion } from "framer-motion";
+import { useToolsFunctions } from "@/hooks/use-tools";
 
-import { SessionStatus, Message } from '@/types';
+type ToolDef = { name: string; description: string; parameters?: any };
 
+// --- tool schema you expose to the model ---
+const defaultTools: ToolDef[] = [
+  {
+    name: "show_component",
+    description: "Show UI component (image/video/panel) by name.",
+    parameters: {
+      type: "object",
+      properties: { component_name: { type: "string" } },
+      required: ["component_name"],
+    },
+  },
+];
+
+// ---------- helpers for logs ----------
+type MessageLog = {
+  id: string;
+  role?: "user" | "assistant" | "system";
+  text?: string;
+  timestamp: number;
+  type?: string;
+  data?: { text?: string };
+};
+
+function summarizeEvent(ev: any): string {
+  try {
+    if (ev.type === "response.text.delta") return `Δ text: ${ev.delta}`;
+    if (ev.type === "response.audio_transcript.delta") return `Δ audio: ${ev.delta}`;
+    if (ev.type?.startsWith("conversation.item.input_audio_transcription"))
+      return `${ev.type}${ev.transcript ? ` → ${ev.transcript}` : ""}`;
+    if (ev.type === "response.function_call_arguments.done")
+      return `tool: ${ev.name} args: ${ev.arguments?.slice?.(0, 120) ?? ""}`;
+    if (ev.type === "error") return `ERROR: ${JSON.stringify(ev.error).slice(0, 200)}`;
+    return `${ev.type ?? "event"} ${ev.item?.id ?? ev.item_id ?? ""}`.trim();
+  } catch {
+    return String(ev?.type ?? "event");
+  }
+}
+
+function eventsToMessageLogs(events: any[]): MessageLog[] {
+  return events.map((ev, i) => ({
+    id: String(ev?.item?.id ?? ev?.item_id ?? i),
+    role: ev?.item?.role,
+    text: ev?.item?.content?.[0]?.text || ev?.delta || "",
+    timestamp: Date.now(),
+    type: ev?.type,
+    data: { text: summarizeEvent(ev) },
+  }));
+}
+
+// ---------- page ----------
 const App: React.FC = () => {
- 
-  const [voice, setVoice] = useState("ash")
-
-  const [sessionStatus, setSessionStatus] = useState<SessionStatus>('DISCONNECTED');
+  const [isOpen, setIsOpen] = useState(true); // for the close “×” button
+  const [voice, setVoice] = useState("alloy");
   const [timer, setTimer] = useState<number>(0);
+  const [componentName, setComponentName] = useState<string | null>(null);
+  const [isMuted, setIsMuted] = useState(false);
 
-  // Auto-scroll ref
+  const [agent, setAgentState] = useState({
+    name: "General",
+    voice: "alloy",
+    instructions: "You are a helpful assistant.",
+    tools: defaultTools as ToolDef[],
+  });
+
+  // logs dialog
+  const [logSearchQuery, setLogSearchQuery] = useState("");
+
+  // Auto-scroll ref for message list
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // WebRTC Audio Session Hook
   const {
     status,
-    isSessionActive,
-    registerFunction,
-    handleStartStopClick,
-    msgs,
     conversation,
-    sendTextMessage
-  } = useWebRTCAudioSession(voice, tools)
+    volume,
+    events, // raw server events (for logs + analytics)
+    connect,
+    disconnect,
+    sendText,
+    pttDown,
+    pttUp,
+    setAgent,
+    updateSession,
+    registerFunction,
+    setMicEnabled,     // from hook (tiny wrapper to client.setMicEnabled)
+    isMicEnabled,      // from hook (tiny wrapper to client.isMicEnabled)
+  } = useWebRTC({
+    // Use your live model here (or passthrough via /api/session)
+    model: "gpt-realtime",
+    defaultVoice: "alloy",
+    appendModelVoiceToUrl: true, // set false if you want server-only config
+    getAgent: () => agent,
+    onShowComponent: (name) => setComponentName(name),
+    onFunctionCall: ({ name, arguments: argsString, respond }) => {
+      if (name === "show_component") {
+        try {
+          const { component_name } = JSON.parse(argsString);
+          setComponentName(component_name);
+        } catch {
+          // ignore parse errors; respond with failure
+        }
+        respond({ ok: true });
+      }
+    },
+  });
 
-  // Get all tools functions
+  // Register any local “tool” functions once
+  useEffect(() => {
+    registerFunction("get_time", async () => ({ time: new Date().toISOString() }));
+  }, [registerFunction]);
+
+  // Register the toolbox functions you already built
   const toolsFunctions = useToolsFunctions();
-
   useEffect(() => {
-    // Register all functions by iterating over the object
-    Object.entries(toolsFunctions).forEach(([name, func]) => {
-      const functionNames: Record<string, string> = {
-        timeFunction: 'getCurrentTime',
-        backgroundFunction: 'changeBackgroundColor',
-        partyFunction: 'partyMode',
-        launchWebsite: 'launchWebsite', 
-        copyToClipboard: 'copyToClipboard',
-        scrapeWebsite: 'scrapeWebsite'
-      };
-      
-      registerFunction(functionNames[name], func);
+    const nameMap: Record<string, string> = {
+      timeFunction: "getCurrentTime",
+      backgroundFunction: "changeBackgroundColor",
+      partyFunction: "partyMode",
+      launchWebsite: "launchWebsite",
+      copyToClipboard: "copyToClipboard",
+      scrapeWebsite: "scrapeWebsite",
+    };
+    Object.entries(toolsFunctions).forEach(([localName, func]) => {
+      registerFunction(nameMap[localName], func);
     });
-  }, [registerFunction, toolsFunctions])
+  }, [registerFunction, toolsFunctions]);
 
+  // Keep agent voice in sync with selector
   useEffect(() => {
+    const next = { ...agent, voice };
+    setAgentState(next);
+    setAgent(next);
+    updateSession({ voice }); // push to live session if connected
+  }, [voice]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    console.log(`status is now ${status}`)
-
-     //else if (status.startsWith("Session established")) {
-
-  }, [status])
-
-  // Timer Logic
+  // Timer based on connection status
   useEffect(() => {
-    let interval: NodeJS.Timeout | null = null;
-    if (sessionStatus === 'CONNECTED') {
-      interval = setInterval(() => setTimer((prev) => prev + 1), 1000);
+    let id: NodeJS.Timeout | null = null;
+    if (status === "CONNECTED") {
+      id = setInterval(() => setTimer((t) => t + 1), 1000);
+    } else {
+      setTimer(0);
     }
     return () => {
-      if (interval) clearInterval(interval);
-      setTimer(0);
+      if (id) clearInterval(id);
     };
-  }, [sessionStatus]);
+  }, [status]);
+
+  // Auto-scroll on new conversation items
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [conversation]);
+
+  const isConnected = status === "CONNECTED";
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
-    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
   };
 
+  // Mute/unmute mic
+  const onMute = () => {
+    const next = !isMuted;
+    setIsMuted(next);
+    setMicEnabled?.(!next);
+  };
+
+  const onStartCall = () => connect();
+  const onEndCall = () => disconnect();
+  const onEndSession = () => disconnect();
+  const onToggleTranscription = () => {
+    // placeholder toggle (wire to your own UI if needed)
+    console.log("toggle transcription view");
+  };
+
+  // Build logs on demand from `events`
+  const messageLogs: MessageLog[] = useMemo(
+    () => eventsToMessageLogs(events),
+    [events]
+  );
+  const filteredLogs = useMemo(() => {
+    const q = logSearchQuery.trim().toLowerCase();
+    if (!q) return messageLogs;
+    return messageLogs.filter((l) =>
+      (l.data?.text ?? "").toLowerCase().includes(q)
+    );
+  }, [messageLogs, logSearchQuery]);
+
+  const downloadTranscription = () => {
+    const content = conversation
+      .map(
+        (m) =>
+          `[${new Date(m.timestamp).toLocaleString()}] ${m.role}: ${m.text}`
+      )
+      .join("\n");
+    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `transcript-${new Date().toISOString()}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  if (!isOpen) return null;
+
   return (
-     <motion.div
+    <motion.div
       className="fixed inset-0 bg-black bg-opacity-50 z-50 flex flex-col"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
@@ -101,180 +243,225 @@ const App: React.FC = () => {
     >
       <header className="bg-gradient-to-r from-neutral-800 to-neutral-700 p-4 flex items-center justify-between shadow-md">
         <div className="flex items-center gap-2">
-          <h1 className="text-xl font-semibold text-neutral-200">Cypress Resorts</h1>
+          <h1 className="text-xl font-semibold text-neutral-200">
+            Cypress Resorts
+          </h1>
         </div>
         <span className="text-sm text-neutral-400">Luxury Awaits</span>
       </header>
-      <div className="flex-1 flex flex-col md:flex-row gap-4 p-4">
-        
-        <div className="md:w-1/3 flex justify-center items-center">
-           <motion.div
-      className="relative flex items-center justify-center w-full h-full"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-    >
-      <div className="relative w-[240px] h-[480px] bg-neutral-900 rounded-[32px] border-2 border-neutral-800 shadow-xl overflow-hidden">
-        <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-16 h-4 bg-neutral-800 rounded-b-lg z-10" />
-        <div className="absolute top-6 bottom-0 left-0 right-0 flex flex-col">
-          <div className="flex-1 overflow-y-auto p-3">
-            
-           <div className="h-full flex flex-col text-neutral-200">
-              <div className="flex justify-between items-center mb-2 px-3">
-                <h3 className="text-sm font-semibold">{'Cypress Resorts '}</h3>
-                <span className="text-xs">{formatTime(timer)}</span>
-              </div>
-              <div className="flex-1 overflow-y-auto space-y-2 mb-4 no-scrollbar max-w-full box-sizing-border-box">
-               <motion.div 
-                  className="w-full max-w-md bg-card text-card-foreground rounded-xl border shadow-sm p-6 space-y-4"
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ delay: 0.2, duration: 0.4 }}
-                >
-                  <VoiceSelector value={voice} onValueChange={setVoice} />
-                  
-                  
-                  {msgs.length > 4 && <TokenUsageDisplay messages={msgs} />}
-                  {status && (
-                    <motion.div 
-                      className="w-full flex flex-col gap-2"
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      exit={{ opacity: 0, height: 0 }}
-                      transition={{ duration: 0.3 }}
-                    >
-                      <MessageControls conversation={conversation} msgs={msgs} />
-                      <TextInput 
-                        onSubmit={sendTextMessage}
-                        disabled={!isSessionActive}
-                      />
-                    </motion.div>
-                  )}
-                </motion.div>
-                <div ref={messagesEndRef} />
-              </div>
-             
-              {isSessionActive && (
-                <div className="text-xs text-neutral-400 text-center p-2">
-                  Status: {isSessionActive ? `Open` : 'Closed'}
-                </div>
-              )}
-            </div>
 
-          </div>
-          <div className="p-3 space-y-2 border-t border-neutral-800">
-            <div className="flex items-center justify-between">
-              {isCallActive ? (
-                <>
-                  <button
-                    onClick={onMute}
-                    className={`p-1.5 rounded-full ${isMuted ? 'bg-yellow-500' : 'bg-neutral-600'}`}
-                  >
-                    {isMuted ? (
-                      <MicOff className="text-white text-xs" />
-                    ) : (
-                      <Mic className="text-white text-xs" />
+      <div className="flex-1 flex flex-col md:flex-row gap-4 p-4">
+        {/* iPhone shell */}
+        <div className="md:w-1/3 flex justify-center items-center">
+          <motion.div
+            className="relative flex items-center justify-center w-full h-full"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <div className="relative w-[240px] h-[480px] bg-neutral-900 rounded-[32px] border-2 border-neutral-800 shadow-xl overflow-hidden">
+              <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-16 h-4 bg-neutral-800 rounded-b-lg z-10" />
+              <div className="absolute top-6 bottom-0 left-0 right-0 flex flex-col">
+                {/* top content */}
+                <div className="flex-1 overflow-y-auto p-3">
+                  <div className="h-full flex flex-col text-neutral-200">
+                    <div className="flex justify-between items-center mb-2 px-3">
+                      <h3 className="text-sm font-semibold">
+                        Cypress Resorts
+                      </h3>
+                      <span className="text-xs">{formatTime(timer)}</span>
+                    </div>
+
+                    {/* card with voice + messages */}
+                    <div className="flex-1 overflow-y-auto space-y-2 mb-4 no-scrollbar max-w-full box-sizing-border-box">
+                      <motion.div
+                        className="w-full max-w-md bg-card text-card-foreground rounded-xl border shadow-sm p-6 space-y-4"
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ delay: 0.2, duration: 0.4 }}
+                      >
+                        <VoiceSelector value={voice} onValueChange={setVoice} />
+
+                        {events.length > 4 && (
+                          <TokenUsageDisplay messages={events} />
+                        )}
+
+                        {status && (
+                          <motion.div
+                            className="w-full flex flex-col gap-2"
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: "auto" }}
+                            exit={{ opacity: 0, height: 0 }}
+                            transition={{ duration: 0.3 }}
+                          >
+                            {/* Pass events directly to MessageControls */}
+                            <MessageControls
+                              conversation={conversation}
+                              msgs={events}
+                            />
+                            <TextInput
+                              onSubmit={sendText}
+                              disabled={!isConnected}
+                            />
+                          </motion.div>
+                        )}
+                      </motion.div>
+                      <div ref={messagesEndRef} />
+                    </div>
+
+                    {isConnected && (
+                      <div className="text-xs text-neutral-400 text-center p-2">
+                        Status: Open
+                      </div>
                     )}
-                  </button>
-                  <div className="flex items-center gap-x-2">
-                    <Dialog>
-                      <DialogTrigger asChild>
-                        <button className="p-1.5 rounded-full bg-neutral-600 text-white text-xs">
-                          <UserPlus />
-                        </button>
-                      </DialogTrigger>
-                      <DialogContent className="bg-neutral-900 text-neutral-200 border-neutral-800">
-                        <DialogHeader>
-                          <DialogTitle>Select Voice</DialogTitle>
-                        </DialogHeader>
-                        <div className="text-sm text-neutral-400">Coming soon</div>
-                      </DialogContent>
-                    </Dialog>
-                    <Dialog>
-                      <DialogTrigger asChild>
-                        <button className="p-1.5 rounded-full bg-neutral-600 text-white text-xs">
-                          <FileOutput />
-                        </button>
-                      </DialogTrigger>
-                      <DialogContent className="bg-neutral-900 text-neutral-200 border-neutral-800 max-w-[90vw] max-h-[80vh] w-[400px] h-[400px] flex flex-col">
-                        <DialogHeader>
-                          <DialogTitle>System Logs</DialogTitle>
-                        </DialogHeader>
-                        <div className="mt-4">
-                          <input
-                            type="text"
-                            value={logSearchQuery}
-                            onChange={(e) => setLogSearchQuery(e.target.value)}
-                            placeholder="Search logs..."
-                            className="w-full p-1.5 bg-neutral-800 text-neutral-200 text-xs rounded-lg border border-neutral-700 focus:outline-none focus:ring-1 focus:ring-gold-500"
-                          />
-                        </div>
-                        <div className="flex-1 overflow-y-auto text-xs text-neutral-400">
-                          {filteredLogs.length > 0 ? (
-                            filteredLogs.map((log, index) => (
-                              <p key={index} className="border-b border-neutral-700 py-1">
-                                {log.data?.text ?? 'No log content'}
-                              </p>
-                            ))
-                          ) : (
-                            <p>No logs available.</p>
-                          )}
-                        </div>
-                      </DialogContent>
-                    </Dialog>
-                    <button
-                      onClick={downloadTranscription}
-                      className="p-1.5 rounded-full bg-neutral-600 text-white text-xs"
-                      title="Download Transcription"
-                    >
-                      <Download />
-                    </button>
                   </div>
+                </div>
+
+                {/* bottom controls */}
+                <div className="p-3 space-y-2 border-t border-neutral-800">
+                  <div className="flex items-center justify-between">
+                    {isConnected ? (
+                      <>
+                        <button
+                          onClick={onMute}
+                          className={`p-1.5 rounded-full ${
+                            isMuted ? "bg-yellow-500" : "bg-neutral-600"
+                          }`}
+                          title={isMuted ? "Unmute" : "Mute"}
+                        >
+                          {isMuted ? (
+                            <MicOff className="text-white text-xs" />
+                          ) : (
+                            <Mic className="text-white text-xs" />
+                          )}
+                        </button>
+
+                        <div className="flex items-center gap-x-2">
+                          <Dialog>
+                            <DialogTrigger asChild>
+                              <button className="p-1.5 rounded-full bg-neutral-600 text-white text-xs">
+                                <UserPlus />
+                              </button>
+                            </DialogTrigger>
+                            <DialogContent className="bg-neutral-900 text-neutral-200 border-neutral-800">
+                              <DialogHeader>
+                                <DialogTitle>Select Voice</DialogTitle>
+                              </DialogHeader>
+                              <div className="text-sm text-neutral-400">
+                                Coming soon
+                              </div>
+                            </DialogContent>
+                          </Dialog>
+
+                          <Dialog>
+                            <DialogTrigger asChild>
+                              <button className="p-1.5 rounded-full bg-neutral-600 text-white text-xs">
+                                <FileOutput />
+                              </button>
+                            </DialogTrigger>
+                            <DialogContent className="bg-neutral-900 text-neutral-200 border-neutral-800 max-w-[90vw] max-h-[80vh] w-[400px] h-[400px] flex flex-col">
+                              <DialogHeader>
+                                <DialogTitle>System Logs</DialogTitle>
+                              </DialogHeader>
+                              <div className="mt-4">
+                                <input
+                                  type="text"
+                                  value={logSearchQuery}
+                                  onChange={(e) =>
+                                    setLogSearchQuery(e.target.value)
+                                  }
+                                  placeholder="Search logs..."
+                                  className="w-full p-1.5 bg-neutral-800 text-neutral-200 text-xs rounded-lg border border-neutral-700 focus:outline-none focus:ring-1 focus:ring-gold-500"
+                                />
+                              </div>
+                              <div className="flex-1 overflow-y-auto text-xs text-neutral-400">
+                                {filteredLogs.length > 0 ? (
+                                  filteredLogs.map((log, index) => (
+                                    <p
+                                      key={index}
+                                      className="border-b border-neutral-700 py-1"
+                                    >
+                                      {log.data?.text ?? "No log content"}
+                                    </p>
+                                  ))
+                                ) : (
+                                  <p>No logs available.</p>
+                                )}
+                              </div>
+                            </DialogContent>
+                          </Dialog>
+
+                          <button
+                            onClick={downloadTranscription}
+                            className="p-1.5 rounded-full bg-neutral-600 text-white text-xs"
+                            title="Download Transcription"
+                          >
+                            <Download />
+                          </button>
+                        </div>
+
+                        <button
+                          onClick={onEndCall}
+                          className="p-1.5 rounded-full bg-red-600"
+                          title="End Call"
+                        >
+                          <PhoneOff className="text-white text-xs" />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={onStartCall}
+                          className="p-1.5 rounded-full bg-green-600"
+                          title="Start Call"
+                        >
+                          <Phone className="text-white text-xs" />
+                        </button>
+                        <button
+                          onClick={onEndSession}
+                          className="p-1.5 rounded-full bg-neutral-600"
+                          title="End Session"
+                        >
+                          <PhoneOff className="text-white text-xs" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+
                   <button
-                    onClick={onEndCall}
-                    className="p-1.5 rounded-full bg-red-600"
+                    onClick={onToggleTranscription}
+                    className="p-1.5 bg-neutral-700 rounded-lg text-neutral-200 w-full flex justify-center"
+                    title="Toggle transcription view"
                   >
-                    <PhoneOff className="text-white text-xs" />
+                    <Eye className="text-xs" />
                   </button>
-                </>
-              ) : (
-                <>
-                  <button
-                    onClick={onStartCall}
-                    className="p-1.5 rounded-full bg-green-600"
-                  >
-                    <Phone className="text-white text-xs" />
-                  </button>
-                  <button
-                    onClick={onEndSession}
-                    className="p-1.5 rounded-full bg-neutral-600"
-                    title="End Session"
-                  >
-                    <PhoneOff className="text-white text-xs" />
-                  </button>
-                </>
-              )}
+                </div>
+              </div>
+
+              <button
+                onClick={() => setIsOpen(false)}
+                className="absolute top-2 right-2 text-neutral-400 text-sm"
+                title="Close"
+              >
+                ×
+              </button>
             </div>
-            <button
-              onClick={onToggleTranscription}
-              className="p-1.5 bg-neutral-700 rounded-lg text-neutral-200 w-full flex justify-center"
-            >
-              <Eye className="text-xs" />
-            </button>
+          </motion.div>
+        </div>
+
+        {/* right side area could render componentName previews, etc. */}
+        <div className="md:flex-1 hidden md:block border border-neutral-800 rounded-xl p-4 text-neutral-300">
+          <div className="text-xs uppercase opacity-60 mb-2">
+            Component request
           </div>
-        </div>
-        <button
-          onClick={onClose}
-          className="absolute top-2 right-2 text-neutral-400 text-sm"
-        >
-          ×
-        </button>
-      </div>
-    </motion.div>
+          <div className="font-mono text-emerald-400">
+            {componentName ?? "—"}
+          </div>
+          {/* Render your image/video/etc based on componentName here */}
         </div>
       </div>
     </motion.div>
-  )
-}
+  );
+};
 
 export default App;

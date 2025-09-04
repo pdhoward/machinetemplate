@@ -1,36 +1,52 @@
-import { NextResponse } from 'next/server';
+// app/api/session/route.ts
+import { NextResponse } from "next/server";
 
-export async function POST() {
-    try {        
-        if (!process.env.OPENAI_API_KEY){
-            throw new Error(`OPENAI_API_KEY is not set`);
+const ALLOWED_MODELS = new Set(["gpt-4o-realtime-preview-2024-12-17"]);
+const ALLOWED_VOICES = new Set(["alloy", "coral"]);
 
-        }
-        const response = await fetch("https://api.openai.com/v1/realtime/sessions", {
-            method: "POST",
-            headers: {
-                Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                model: "gpt-realtime-2025-08-28",
-                voice: "alloy",
-                modalities: ["audio", "text"],
-                instructions:"Start conversation with the user by saying 'Hello, how can I help you today?' Use the available tools when relevant. After executing a tool, you will need to respond (create a subsequent conversation item) to the user sharing the function result or error. If you do not respond with additional message with function result, user will not know you successfully executed the tool. Speak and respond in the language of the user.",
-                tool_choice: "auto",
-            }),
-        });
+export async function POST(req: Request) {
+  try {
+    if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY not set");
 
-        if (!response.ok) {
-            throw new Error(`API request failed with status ${JSON.stringify(response)}`);
-        }
+    const body = await safeJson(req);
+    const model = ALLOWED_MODELS.has(body.model) ? body.model : "gpt-4o-realtime-preview-2024-12-17";
+    const voice = ALLOWED_VOICES.has(body.voice) ? body.voice : "alloy";
 
-        const data = await response.json();
+    const payload = {
+      model,
+      voice,
+      modalities: ["audio", "text"],
+      instructions: body.instructions ?? "Be helpful and concise.",
+      tool_choice: body.tool_choice ?? "auto",
+      tools: Array.isArray(body.tools) ? body.tools : [],
+      // optional: start with server VAD
+      turn_detection: body.turn_detection ?? {
+        type: "server_vad",
+        threshold: 0.5,
+        prefix_padding_ms: 300,
+        silence_duration_ms: 200,
+        create_response: true,
+      },
+    };
 
-        // Return the JSON response to the client
-        return NextResponse.json(data);
-    } catch (error) {
-        console.error("Error fetching session data:", error);
-        return NextResponse.json({ error: "Failed to fetch session data" }, { status: 500 });
+    const resp = await fetch("https://api.openai.com/v1/realtime/sessions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text();
+      return NextResponse.json({ error: errText }, { status: resp.status });
     }
+    const data = await resp.json();
+    return NextResponse.json(data);
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message || "session error" }, { status: 500 });
+  }
 }
+
+async function safeJson(req: Request) { try { return await req.json(); } catch { return {}; } }
