@@ -73,6 +73,19 @@ export class WebRTCClient {
   private functionRegistry: Record<string, (args: any) => Promise<any> | any> = {};
   private ephemeralUserMessageId: string | null = null;
 
+  private normalizeTools(tools?: ToolDef[]) {
+  const arr = Array.isArray(tools) ? tools : [];
+  return arr.map(t => ({
+    type: "function",                                 // <-- enforce
+    name: t.name,
+    description: t.description ?? "",
+    parameters:
+      t.parameters && typeof t.parameters === "object"
+        ? t.parameters
+        : { type: "object", properties: {}, additionalProperties: false },
+  }));
+}
+
   constructor(opts: RealtimeOptions) {
     this.opts = {
       apiBase: "https://api.openai.com/v1/realtime",
@@ -116,7 +129,7 @@ export class WebRTCClient {
         output_audio_format: "pcm16",
         input_audio_transcription: { model: "whisper-1" },
         turn_detection: this.opts.turnDetection ?? null,
-        tools: this.agent.tools ?? [],
+        tools: this.normalizeTools(this.agent.tools),
         tool_choice: "auto",
         temperature: 0.8,
         max_response_output_tokens: "inf",

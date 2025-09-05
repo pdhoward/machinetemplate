@@ -25,18 +25,27 @@ import {
 } from "@/components/ui/dialog";
 import { motion } from "framer-motion";
 import { useToolsFunctions } from "@/hooks/use-tools";
+import {Diagnostics} from "@/components/diagnostics"
+import SelfTest from "@/components/self-test";
 
-type ToolDef = { name: string; description: string; parameters?: any };
+type ToolDef = {
+  type: "function";                   
+  name: string;
+  description: string;
+  parameters?: any;                  
+};
 
 // --- tool schema you expose to the model ---
 const defaultTools: ToolDef[] = [
   {
+    type: "function",
     name: "show_component",
     description: "Show UI component (image/video/panel) by name.",
     parameters: {
       type: "object",
       properties: { component_name: { type: "string" } },
       required: ["component_name"],
+      additionalProperties: false,
     },
   },
 ];
@@ -113,11 +122,11 @@ const App: React.FC = () => {
     registerFunction,
     setMicEnabled,     // from hook (tiny wrapper to client.setMicEnabled)
     isMicEnabled,      // from hook (tiny wrapper to client.isMicEnabled)
-  } = useWebRTC({
-    // Use your live model here (or passthrough via /api/session)
+    getClient
+  } = useWebRTC({    
     model: "gpt-realtime",
     defaultVoice: "alloy",
-    appendModelVoiceToUrl: true, // set false if you want server-only config
+    appendModelVoiceToUrl: true, // set false for server-only config
     getAgent: () => agent,
     onShowComponent: (name) => setComponentName(name),
     onFunctionCall: ({ name, arguments: argsString, respond }) => {
@@ -199,8 +208,7 @@ const App: React.FC = () => {
   const onEndCall = () => disconnect();
   const onEndSession = () => disconnect();
   const onToggleTranscription = () => {
-    // placeholder toggle (wire to your own UI if needed)
-    console.log("toggle transcription view");
+     console.log("Placeholder - toggle transcription view");
   };
 
   // Build logs on demand from `events`
@@ -399,6 +407,19 @@ const App: React.FC = () => {
                             <Download />
                           </button>
                         </div>
+                        <SelfTest
+                          status={status}
+                          isConnected={isConnected}
+                          connect={connect}
+                          disconnect={disconnect}
+                          sendText={sendText}
+                          conversation={conversation}
+                          componentName={componentName}
+                          className="flex items-center" // wrapper
+                          buttonClassName="p-1.5 rounded-full text-white text-xs bg-emerald-600"
+                          disabledClassName="p-1.5 rounded-full text-white text-xs bg-neutral-500"
+                          statusLineClassName="ml-2 text-[11px] text-neutral-300"
+                        />
 
                         <button
                           onClick={onEndCall}
@@ -459,6 +480,7 @@ const App: React.FC = () => {
           </div>
           {/* Render your image/video/etc based on componentName here */}
         </div>
+        <Diagnostics status={status} volume={volume} events={events} getClient={getClient} />
       </div>
     </motion.div>
   );
