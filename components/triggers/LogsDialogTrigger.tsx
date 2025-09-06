@@ -59,8 +59,8 @@ export default function LogsDialogTrigger({ events }: Props) {
         </div>
         <div className="flex-1 overflow-y-auto text-xs text-neutral-400 mt-2">
           {rows.length > 0 ? (
-            rows.map((r) => (
-              <p key={r.id} className="border-b border-neutral-700 py-1">
+            rows.map((r, i) => (
+              <p key={i} className="border-b border-neutral-700 py-1">
                 {r.text}
               </p>
             ))

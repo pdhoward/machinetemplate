@@ -3,7 +3,7 @@
 import React from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import TriggerIconButton from "./TriggerIconButton";
-import { FlaskConical } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 import SelfTest from "@/components/self-test";
 import type { ConversationItem } from "@/lib/realtime";
 
@@ -30,7 +30,7 @@ export default function SelfTestDialogTrigger({
     <Dialog>
       <DialogTrigger asChild>
         <TriggerIconButton title="Self Test">
-          <FlaskConical size={14} />
+          <ShieldCheck size={14} />
         </TriggerIconButton>
       </DialogTrigger>
 
