@@ -1,38 +1,33 @@
 "use client";
 
 import React from "react";
-import { Phone, PhoneOff, Mic, MicOff, Eye } from "lucide-react";
+import { Mic, MicOff } from "lucide-react";
 
 type ControlsBarProps = {
   isConnected: boolean;
   isMuted: boolean;
-  transcriptOpen: boolean;
   onMute: () => void;
   onStartCall: () => void;
   onEndCall: () => void;
-  onEndSession: () => void; // kept for API compatibility (not rendered)
-  onToggleTranscription: () => void;
+  onEndSession?: () => void; // kept for API compatibility (unused)
   // middle cluster slots
   voiceTrigger?: React.ReactNode;
   logsTrigger?: React.ReactNode;
-  onDownload?: () => void;
-  downloadTrigger?: React.ReactNode; // optional custom button
+  transcriptTrigger?: React.ReactNode; 
+  usageTrigger?: React.ReactNode;
   selfTest?: React.ReactNode;
 };
 
 export default function ControlsBar({
   isConnected,
   isMuted,
-  transcriptOpen,
   onMute,
   onStartCall,
   onEndCall,
-  // onEndSession (intentionally unused)
-  onToggleTranscription,
   voiceTrigger,
   logsTrigger,
-  onDownload,
-  downloadTrigger,
+  transcriptTrigger,
+  usageTrigger,
   selfTest,
 }: ControlsBarProps) {
   const btnBase =
@@ -46,24 +41,8 @@ export default function ControlsBar({
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-         {/* Call buttons (simplified) */}
-        {isConnected ? (
-          <button
-            onClick={onEndCall}
-            className={btnDanger}
-            title="End Call"
-          >
-            <PhoneOff size={iconSize} />
-          </button>
-        ) : (
-          <button
-            onClick={onStartCall}
-            className={btnSuccess}
-            title="Start Call"
-          >
-            <Phone size={iconSize} />
-          </button>
-        )}
+       {/* Call buttons (single button depending on state) */}
+        
         {/* Left: Mute / Unmute */}
         <button
           onClick={onMute}
@@ -75,41 +54,13 @@ export default function ControlsBar({
 
         {/* Middle: compact cluster */}
         <div className="flex items-center gap-1.5">
-          {/* Voice dialog trigger */}
           {voiceTrigger}
-
-          {/* Logs dialog trigger */}
           {logsTrigger}
-
-          {/* Download */}
-          {downloadTrigger ? (
-            downloadTrigger
-          ) : (
-            <button
-              onClick={onDownload}
-              className={btnNeutral}
-              title="Download Transcription"
-            >
-              ⤓
-            </button>
-          )}
-
-          {/* SelfTest */}
+          {transcriptTrigger}
+          {usageTrigger}       
           {selfTest}
-        </div>
-
-       
+        </div>     
       </div>
-
-      {/* Toggle transcription */}
-      <button
-        onClick={onToggleTranscription}
-        className="w-full flex items-center justify-center gap-1 text-neutral-200 bg-neutral-700 hover:bg-neutral-600 rounded-lg py-1.5 text-xs"
-        title="Toggle transcription view"
-      >
-        <Eye size={12} />
-        {transcriptOpen ? "Hide transcript" : "Show transcript"}
-      </button>
     </div>
   );
 }
