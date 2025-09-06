@@ -2,7 +2,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import { WebRTCClient } from "@/lib/realtime/WebRTC";
+import { WebRTCClient } from "@/lib/realtime";
 
 export interface AgentConfigInput {
   name?: string;
@@ -77,7 +77,7 @@ export function useWebRTC(opts: UseWebRTCOptions) {
       voice: opts.defaultVoice ?? "alloy",
       tokenProvider,
       appendModelVoiceToUrl: opts.appendModelVoiceToUrl ?? true,
-      turnDetection: opts.turnDetection ?? null,
+      turnDetection: opts.turnDetection,
       onStatus: setStatus,
       onConversation: setConversation,
       onVolume: setVolume,

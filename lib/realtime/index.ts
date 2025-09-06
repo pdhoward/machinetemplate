@@ -74,29 +74,28 @@ export class WebRTCClient {
   private ephemeralUserMessageId: string | null = null;
 
   private normalizeTools(tools?: ToolDef[]) {
-  const arr = Array.isArray(tools) ? tools : [];
-  return arr.map(t => ({
-    type: "function",                                 // <-- enforce
-    name: t.name,
-    description: t.description ?? "",
-    parameters:
-      t.parameters && typeof t.parameters === "object"
-        ? t.parameters
-        : { type: "object", properties: {}, additionalProperties: false },
-  }));
-}
+    const arr = Array.isArray(tools) ? tools : [];
+    return arr.map(t => ({
+      type: "function",  // <-- enforce
+      name: t.name,
+      description: t.description ?? "",
+      parameters:
+        t.parameters && typeof t.parameters === "object"
+          ? t.parameters
+          : { type: "object", properties: {}, additionalProperties: false },
+    }));
+  }
 
   constructor(opts: RealtimeOptions) {
     this.opts = {
       apiBase: "https://api.openai.com/v1/realtime",
-      ...opts,
+      ...opts,  // <- note: if opts.turnDetection is undefined, it is not sent
     };
   }
 
   // ---------- Public getters ----------
   getStatus() { return this.status; }
-  getConversation() { return [...this.conv]; }
-  getDataChannel() { return this.dc; }
+  getConversation() { return [...this.conv]; } 
 
   // ---------- Public callbacks setters (if you prefer setting later) ----------
   setCallbacks(partial: Partial<RealtimeOptions>) {
@@ -110,33 +109,43 @@ export class WebRTCClient {
     if (this.dc?.readyState === "open") this.updateSession({});
   }
 
-  updateSession(partial: Partial<AgentConfigInput> & {
-    // allow direct overrides too
+ updateSession(
+  partial: Partial<AgentConfigInput> & {
     voice?: string;
     tools?: ToolDef[];
     instructions?: string;
-  }) {
-    this.agent = { ...this.agent, ...partial };
-
-    const sessionUpdate = {
-      type: "session.update",
-      session: {
-        modalities: ["text", "audio"],
-        model: this.opts.model,
-        instructions: this.agent.instructions ?? "",
-        voice: this.agent.voice ?? this.opts.voice,
-        input_audio_format: "pcm16",
-        output_audio_format: "pcm16",
-        input_audio_transcription: { model: "whisper-1" },
-        turn_detection: this.opts.turnDetection ?? null,
-        tools: this.normalizeTools(this.agent.tools),
-        tool_choice: "auto",
-        temperature: 0.8,
-        max_response_output_tokens: "inf",
-      },
-    };
-    this.send(sessionUpdate);
   }
+) {
+  this.agent = { ...this.agent, ...partial };
+
+  // Build the session payload first
+  const session: any = {
+    modalities: ["text", "audio"],
+    model: this.opts.model,
+    instructions: this.agent.instructions ?? "",
+    voice: this.agent.voice ?? this.opts.voice,
+    input_audio_format: "pcm16",
+    output_audio_format: "pcm16",
+    input_audio_transcription: { model: "whisper-1" },
+    tools: this.normalizeTools(this.agent.tools),
+    tool_choice: "auto",
+    temperature: 0.8,
+    max_response_output_tokens: "inf",
+    // ❌ DO NOT put `turn_detection` here by default.
+  };
+
+  // ✅ Only include `turn_detection` if the client explicitly set it.
+  if (this.opts.turnDetection !== undefined) {
+    session.turn_detection = this.opts.turnDetection;
+  }
+
+  const sessionUpdate = {
+    type: "session.update",
+    session,
+  };
+
+  this.send(sessionUpdate);
+}
 
   // ---------- Register a local function (tool) ----------
   registerFunction(name: string, fn: (args: any) => Promise<any> | any) {
@@ -152,6 +161,10 @@ export class WebRTCClient {
   public isMicEnabled(): boolean {
     return this.micStream?.getAudioTracks().some(t => t.enabled) ?? false;
   }
+  
+  public getDataChannel(): RTCDataChannel | null { return this.dc; }
+  public getPeerConnection(): RTCPeerConnection | null { return this.pc; }  // 👈 add this
+
 
 
   // ---------- Connect / Disconnect ----------
