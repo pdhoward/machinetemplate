@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Beaker } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
 
 type Msg = { role: "user" | "assistant" | "system"; text: string };
 
@@ -109,7 +109,7 @@ export default function SelfTest({
         className={running ? disabledClassName : buttonClassName}
         title="Run self test"
       >
-        <Beaker className="text-white text-xs" />
+        <ShieldCheck className="text-white text-xs" />
       </button>
 
       {(running || result) && (

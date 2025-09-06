@@ -6,16 +6,10 @@ import { VoiceSelector } from "@/components/voice-select";
 import { TokenUsageDisplay } from "@/components/token-usage";
 import { MessageControls } from "@/components/message-controls";
 import { TextInput } from "@/components/text-input";
-import {
-  Phone,
-  PhoneOff,
-  Mic,
-  MicOff,
-  Eye,
-  UserPlus,
-  FileOutput,
-  Download,
-} from "lucide-react";
+import ControlsBar from "@/components/control-bar";
+import TranscriptPanel from "@/components/transcript-panel";
+import { Beaker, Download, FileOutput, UserPlus } from "lucide-react"; // you already import some
+
 import {
   Dialog,
   DialogContent,
@@ -93,7 +87,8 @@ const App: React.FC = () => {
   const [timer, setTimer] = useState<number>(0);
   const [componentName, setComponentName] = useState<string | null>(null);
   const [isMuted, setIsMuted] = useState(false);
-
+  const [transcriptOpen, setTranscriptOpen] = useState(false);
+  
   const [agent, setAgentState] = useState({
     name: "General",
     voice: "alloy",
@@ -206,10 +201,9 @@ const App: React.FC = () => {
 
   const onStartCall = () => connect();
   const onEndCall = () => disconnect();
-  const onEndSession = () => disconnect();
-  const onToggleTranscription = () => {
-     console.log("Placeholder - toggle transcription view");
-  };
+  const onEndSession = () => disconnect();  
+
+  const onToggleTranscription = () => setTranscriptOpen((v) => !v);
 
   // Build logs on demand from `events`
   const messageLogs: MessageLog[] = useMemo(
@@ -241,249 +235,201 @@ const App: React.FC = () => {
   };
 
   if (!isOpen) return null;
+return (
+  <motion.div
+    className="fixed inset-0 bg-black bg-opacity-50 z-50 flex flex-col"
+    initial={{ opacity: 0 }}
+    animate={{ opacity: 1 }}
+    exit={{ opacity: 0 }}
+  >
+    <header className="bg-gradient-to-r from-neutral-800 to-neutral-700 p-4 flex items-center justify-between shadow-md">
+      <div className="flex items-center gap-2">
+        <h1 className="text-xl font-semibold text-neutral-200">
+          Cypress Resorts
+        </h1>
+      </div>
+      <span className="text-sm text-neutral-400">Luxury Awaits</span>
+    </header>
 
-  return (
-    <motion.div
-      className="fixed inset-0 bg-black bg-opacity-50 z-50 flex flex-col"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-    >
-      <header className="bg-gradient-to-r from-neutral-800 to-neutral-700 p-4 flex items-center justify-between shadow-md">
-        <div className="flex items-center gap-2">
-          <h1 className="text-xl font-semibold text-neutral-200">
-            Cypress Resorts
-          </h1>
-        </div>
-        <span className="text-sm text-neutral-400">Luxury Awaits</span>
-      </header>
-
-      <div className="flex-1 flex flex-col md:flex-row gap-4 p-4">
-        {/* iPhone shell */}
-        <div className="md:w-1/3 flex justify-center items-center">
-          <motion.div
-            className="relative flex items-center justify-center w-full h-full"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-          >
-            <div className="relative w-[240px] h-[480px] bg-neutral-900 rounded-[32px] border-2 border-neutral-800 shadow-xl overflow-hidden">
-              <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-16 h-4 bg-neutral-800 rounded-b-lg z-10" />
-              <div className="absolute top-6 bottom-0 left-0 right-0 flex flex-col">
-                {/* top content */}
-                <div className="flex-1 overflow-y-auto p-3">
-                  <div className="h-full flex flex-col text-neutral-200">
-                    <div className="flex justify-between items-center mb-2 px-3">
-                      <h3 className="text-sm font-semibold">
-                        Cypress Resorts
-                      </h3>
-                      <span className="text-xs">{formatTime(timer)}</span>
-                    </div>
-
-                    {/* card with voice + messages */}
-                    <div className="flex-1 overflow-y-auto space-y-2 mb-4 no-scrollbar max-w-full box-sizing-border-box">
-                      <motion.div
-                        className="w-full max-w-md bg-card text-card-foreground rounded-xl border shadow-sm p-6 space-y-4"
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ delay: 0.2, duration: 0.4 }}
-                      >
-                        <VoiceSelector value={voice} onValueChange={setVoice} />
-
-                        {events.length > 4 && (
-                          <TokenUsageDisplay messages={events} />
-                        )}
-
-                        {status && (
-                          <motion.div
-                            className="w-full flex flex-col gap-2"
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: "auto" }}
-                            exit={{ opacity: 0, height: 0 }}
-                            transition={{ duration: 0.3 }}
-                          >
-                            {/* Pass events directly to MessageControls */}
-                            <MessageControls
-                              conversation={conversation}
-                              msgs={events}
-                            />
-                            <TextInput
-                              onSubmit={sendText}
-                              disabled={!isConnected}
-                            />
-                          </motion.div>
-                        )}
-                      </motion.div>
-                      <div ref={messagesEndRef} />
-                    </div>
-
-                    {isConnected && (
-                      <div className="text-xs text-neutral-400 text-center p-2">
-                        Status: Open
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* bottom controls */}
-                <div className="p-3 space-y-2 border-t border-neutral-800">
-                  <div className="flex items-center justify-between">
-                    {isConnected ? (
-                      <>
-                        <button
-                          onClick={onMute}
-                          className={`p-1.5 rounded-full ${
-                            isMuted ? "bg-yellow-500" : "bg-neutral-600"
-                          }`}
-                          title={isMuted ? "Unmute" : "Mute"}
-                        >
-                          {isMuted ? (
-                            <MicOff className="text-white text-xs" />
-                          ) : (
-                            <Mic className="text-white text-xs" />
-                          )}
-                        </button>
-
-                        <div className="flex items-center gap-x-2">
-                          <Dialog>
-                            <DialogTrigger asChild>
-                              <button className="p-1.5 rounded-full bg-neutral-600 text-white text-xs">
-                                <UserPlus />
-                              </button>
-                            </DialogTrigger>
-                            <DialogContent className="bg-neutral-900 text-neutral-200 border-neutral-800">
-                              <DialogHeader>
-                                <DialogTitle>Select Voice</DialogTitle>
-                              </DialogHeader>
-                              <div className="text-sm text-neutral-400">
-                                Coming soon
-                              </div>
-                            </DialogContent>
-                          </Dialog>
-
-                          <Dialog>
-                            <DialogTrigger asChild>
-                              <button className="p-1.5 rounded-full bg-neutral-600 text-white text-xs">
-                                <FileOutput />
-                              </button>
-                            </DialogTrigger>
-                            <DialogContent className="bg-neutral-900 text-neutral-200 border-neutral-800 max-w-[90vw] max-h-[80vh] w-[400px] h-[400px] flex flex-col">
-                              <DialogHeader>
-                                <DialogTitle>System Logs</DialogTitle>
-                              </DialogHeader>
-                              <div className="mt-4">
-                                <input
-                                  type="text"
-                                  value={logSearchQuery}
-                                  onChange={(e) =>
-                                    setLogSearchQuery(e.target.value)
-                                  }
-                                  placeholder="Search logs..."
-                                  className="w-full p-1.5 bg-neutral-800 text-neutral-200 text-xs rounded-lg border border-neutral-700 focus:outline-none focus:ring-1 focus:ring-gold-500"
-                                />
-                              </div>
-                              <div className="flex-1 overflow-y-auto text-xs text-neutral-400">
-                                {filteredLogs.length > 0 ? (
-                                  filteredLogs.map((log, index) => (
-                                    <p
-                                      key={index}
-                                      className="border-b border-neutral-700 py-1"
-                                    >
-                                      {log.data?.text ?? "No log content"}
-                                    </p>
-                                  ))
-                                ) : (
-                                  <p>No logs available.</p>
-                                )}
-                              </div>
-                            </DialogContent>
-                          </Dialog>
-
-                          <button
-                            onClick={downloadTranscription}
-                            className="p-1.5 rounded-full bg-neutral-600 text-white text-xs"
-                            title="Download Transcription"
-                          >
-                            <Download />
-                          </button>
-                        </div>
-                        <SelfTest
-                          status={status}
-                          isConnected={isConnected}
-                          connect={connect}
-                          disconnect={disconnect}
-                          sendText={sendText}
-                          conversation={conversation}
-                          componentName={componentName}
-                          className="flex items-center" // wrapper
-                          buttonClassName="p-1.5 rounded-full text-white text-xs bg-emerald-600"
-                          disabledClassName="p-1.5 rounded-full text-white text-xs bg-neutral-500"
-                          statusLineClassName="ml-2 text-[11px] text-neutral-300"
-                        />
-
-                        <button
-                          onClick={onEndCall}
-                          className="p-1.5 rounded-full bg-red-600"
-                          title="End Call"
-                        >
-                          <PhoneOff className="text-white text-xs" />
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <button
-                          onClick={onStartCall}
-                          className="p-1.5 rounded-full bg-green-600"
-                          title="Start Call"
-                        >
-                          <Phone className="text-white text-xs" />
-                        </button>
-                        <button
-                          onClick={onEndSession}
-                          className="p-1.5 rounded-full bg-neutral-600"
-                          title="End Session"
-                        >
-                          <PhoneOff className="text-white text-xs" />
-                        </button>
-                      </>
-                    )}
+    <div className="flex-1 flex flex-col md:flex-row gap-4 p-4">
+      {/* iPhone shell */}
+      <div className="md:w-1/3 flex justify-center items-center">
+        <motion.div
+          className="relative flex items-center justify-center w-full h-full"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+        >
+          <div className="relative w-[240px] h-[480px] bg-neutral-900 rounded-[32px] border-2 border-neutral-800 shadow-xl overflow-hidden">
+            <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-16 h-4 bg-neutral-800 rounded-b-lg z-10" />
+            <div className="absolute top-6 bottom-0 left-0 right-0 flex flex-col">
+              {/* top content */}
+              <div className="flex-1 overflow-y-auto p-3">
+                <div className="h-full flex flex-col text-neutral-200">
+                  <div className="flex justify-between items-center mb-2 px-3">
+                    <h3 className="text-sm font-semibold">Cypress Resorts</h3>
+                    <span className="text-xs">{formatTime(timer)}</span>
                   </div>
 
-                  <button
-                    onClick={onToggleTranscription}
-                    className="p-1.5 bg-neutral-700 rounded-lg text-neutral-200 w-full flex justify-center"
-                    title="Toggle transcription view"
-                  >
-                    <Eye className="text-xs" />
-                  </button>
+                  {/* card with voice + messages */}
+                  <div className="flex-1 overflow-y-auto space-y-2 mb-4 no-scrollbar max-w-full box-sizing-border-box">
+                    <motion.div
+                      className="w-full max-w-md bg-card text-card-foreground rounded-xl border shadow-sm p-6 space-y-4"
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ delay: 0.2, duration: 0.4 }}
+                    >
+                      <VoiceSelector value={voice} onValueChange={setVoice} />
+
+                      {events.length > 4 && (
+                        <TokenUsageDisplay messages={events} />
+                      )}
+
+                      {status && (
+                        <motion.div
+                          className="w-full flex flex-col gap-2"
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: "auto" }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.3 }}
+                        >
+                          {/* Pass events directly to MessageControls */}
+                          <MessageControls conversation={conversation} msgs={events} />
+                          <TextInput onSubmit={sendText} disabled={!isConnected} />
+                        </motion.div>
+                      )}
+                    </motion.div>
+                    <div ref={messagesEndRef} />
+                  </div>
+
+                  {isConnected && (
+                    <div className="text-xs text-neutral-400 text-center p-2">
+                      Status: Open
+                    </div>
+                  )}
                 </div>
               </div>
 
-              <button
-                onClick={() => setIsOpen(false)}
-                className="absolute top-2 right-2 text-neutral-400 text-sm"
-                title="Close"
-              >
-                ×
-              </button>
-            </div>
-          </motion.div>
-        </div>
+              {/* slide-up transcript overlay */}
+              <TranscriptPanel open={transcriptOpen} conversation={conversation as any} />
 
-        {/* right side area could render componentName previews, etc. */}
-        <div className="md:flex-1 hidden md:block border border-neutral-800 rounded-xl p-4 text-neutral-300">
-          <div className="text-xs uppercase opacity-60 mb-2">
-            Component request
+              {/* bottom controls (compact) */}
+              <div className="p-3 border-t border-neutral-800">
+                <ControlsBar
+                  isConnected={isConnected}
+                  isMuted={isMuted}
+                  transcriptOpen={transcriptOpen}
+                  onMute={onMute}
+                  onStartCall={onStartCall}
+                  onEndCall={onEndCall}
+                  onEndSession={onEndSession}
+                  onToggleTranscription={onToggleTranscription}
+                  voiceTrigger={
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <button
+                          className="inline-flex items-center justify-center rounded-full bg-neutral-600 hover:bg-neutral-500 text-white w-7 h-7"
+                          title="Select Voice"
+                        >
+                          <UserPlus size={14} />
+                        </button>
+                      </DialogTrigger>
+                      <DialogContent className="bg-neutral-900 text-neutral-200 border-neutral-800">
+                        <DialogHeader>
+                          <DialogTitle>Select Voice</DialogTitle>
+                        </DialogHeader>
+                        <div className="text-sm text-neutral-400">Coming soon</div>
+                      </DialogContent>
+                    </Dialog>
+                  }
+                  logsTrigger={
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <button
+                          className="inline-flex items-center justify-center rounded-full bg-neutral-600 hover:bg-neutral-500 text-white w-7 h-7"
+                          title="System Logs"
+                        >
+                          <FileOutput size={14} />
+                        </button>
+                      </DialogTrigger>
+                      <DialogContent className="bg-neutral-900 text-neutral-200 border-neutral-800 max-w-[90vw] max-h-[80vh] w-[400px] h-[400px] flex flex-col">
+                        <DialogHeader>
+                          <DialogTitle>System Logs</DialogTitle>
+                        </DialogHeader>
+                        <div className="mt-2">
+                          <input
+                            type="text"
+                            value={logSearchQuery}
+                            onChange={(e) => setLogSearchQuery(e.target.value)}
+                            placeholder="Search logs..."
+                            className="w-full p-1.5 bg-neutral-800 text-neutral-200 text-xs rounded-lg border border-neutral-700 focus:outline-none focus:ring-1 focus:ring-gold-500"
+                          />
+                        </div>
+                        <div className="flex-1 overflow-y-auto text-xs text-neutral-400 mt-2">
+                          {filteredLogs.length > 0 ? (
+                            filteredLogs.map((log, index) => (
+                              <p key={index} className="border-b border-neutral-700 py-1">
+                                {log.data?.text ?? "No log content"}
+                              </p>
+                            ))
+                          ) : (
+                            <p>No logs available.</p>
+                          )}
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  }
+                  downloadTrigger={
+                    <button
+                      onClick={downloadTranscription}
+                      className="inline-flex items-center justify-center rounded-full bg-neutral-600 hover:bg-neutral-500 text-white w-7 h-7"
+                      title="Download Transcription"
+                    >
+                      <Download size={14} />
+                    </button>
+                  }
+                  selfTest={
+                    <SelfTest
+                      status={status}
+                      isConnected={isConnected}
+                      connect={connect}
+                      disconnect={disconnect}
+                      sendText={sendText}
+                      conversation={conversation}
+                      componentName={componentName}
+                      className="flex items-center"
+                      buttonClassName="inline-flex items-center justify-center rounded-full bg-emerald-600 hover:bg-emerald-500 text-white w-7 h-7"
+                      disabledClassName="inline-flex items-center justify-center rounded-full bg-neutral-500 text-white w-7 h-7"
+                      statusLineClassName="hidden"
+                    />
+                  }
+                />
+              </div>
+            </div>
+
+            <button
+              onClick={() => setIsOpen(false)}
+              className="absolute top-2 right-2 text-neutral-400 text-sm"
+              title="Close"
+            >
+              ×
+            </button>
           </div>
-          <div className="font-mono text-emerald-400">
-            {componentName ?? "—"}
-          </div>
-          {/* Render your image/video/etc based on componentName here */}
-        </div>
-        <Diagnostics status={status} volume={volume} events={events} getClient={getClient} />
+        </motion.div>
       </div>
-    </motion.div>
-  );
+
+      {/* right side area could render componentName previews, etc. */}
+      <div className="md:flex-1 hidden md:block border border-neutral-800 rounded-xl p-4 text-neutral-300">
+        <div className="text-xs uppercase opacity-60 mb-2">Component request</div>
+        <div className="font-mono text-emerald-400">{componentName ?? "—"}</div>
+        {/* Render your image/video/etc based on componentName here */}
+      </div>
+
+      <Diagnostics status={status} volume={volume} events={events} getClient={getClient} />
+    </div>
+  </motion.div>
+);
+
 };
 
 export default App;
