@@ -5,10 +5,17 @@ import { useWebRTC } from "@/hooks/useWebRTC";
 import { VoiceSelector } from "@/components/voice-select";
 import { TokenUsageDisplay } from "@/components/token-usage";
 import Visualizer from "@/components/visualizer";
-import { TextInput } from "@/components/text-input";
 import ControlsBar from "@/components/control-bar";
+import {
+  VoiceDialogTrigger,
+  LogsDialogTrigger,
+  TranscriptDialogTrigger,
+  UsageDialogTrigger,
+  SelfTestDialogTrigger
+} from "@/components/triggers";
+
 import TranscriptPanel from "@/components/transcript-panel";
-import { Send, Eye, Download, FileOutput, UserPlus, Braces } from "lucide-react"; // you already import some
+import { Send, Captions, Download, FileOutput, UserPlus, Braces } from "lucide-react"; // you already import some
 
 import {
   Dialog,
@@ -348,171 +355,37 @@ return (
               <TranscriptPanel open={transcriptOpen} conversation={conversation as any} />
 
            {/* bottom controls (compact) */}
-            <div className="p-3 border-t border-neutral-800">
-              <ControlsBar
-                isConnected={isConnected}
-                isMuted={isMuted}
-                onMute={onMute}
-                onStartCall={onStartCall}
-                onEndCall={onEndCall}
-                // middle cluster triggers (small buttons)
-
-                voiceTrigger={
-                  <Dialog>
-                    <DialogTrigger asChild>
-                      <button
-                        className="inline-flex items-center justify-center rounded-full bg-neutral-600 hover:bg-neutral-500 text-white w-7 h-7"
-                        title="Select Voice"
-                      >
-                        <UserPlus size={14} />
-                      </button>
-                    </DialogTrigger>
-                    <DialogContent className="bg-neutral-900 text-neutral-200 border border-neutral-800 max-w-[90vw] w-[360px]">
-                      <DialogHeader>
-                        <DialogTitle>Select Voice</DialogTitle>
-                      </DialogHeader>
-                      <div className="mt-2">
-                        <VoiceSelector value={voice} onValueChange={setVoice} />
-                      </div>
-                    </DialogContent>
-                  </Dialog>
-                }
-
-                logsTrigger={
-                  <Dialog>
-                    <DialogTrigger asChild>
-                      <button
-                        className="inline-flex items-center justify-center rounded-full bg-neutral-600 hover:bg-neutral-500 text-white w-7 h-7"
-                        title="System Logs"
-                      >
-                        <FileOutput size={14} />
-                      </button>
-                    </DialogTrigger>
-                    <DialogContent className="bg-neutral-900 text-neutral-200 border-neutral-800 max-w-[90vw] max-h-[80vh] w-[400px] h-[400px] flex flex-col">
-                      <DialogHeader>
-                        <DialogTitle>System Logs</DialogTitle>
-                      </DialogHeader>
-                      <div className="mt-2">
-                        <input
-                          type="text"
-                          value={logSearchQuery}
-                          onChange={(e) => setLogSearchQuery(e.target.value)}
-                          placeholder="Search logs..."
-                          className="w-full p-1.5 bg-neutral-800 text-neutral-200 text-xs rounded-lg border border-neutral-700 focus:outline-none focus:ring-1 focus:ring-gold-500"
-                        />
-                      </div>
-                      <div className="flex-1 overflow-y-auto text-xs text-neutral-400 mt-2">
-                        {filteredLogs.length > 0 ? (
-                          filteredLogs.map((log, index) => (
-                            <p key={index} className="border-b border-neutral-700 py-1">
-                              {log.data?.text ?? "No log content"}
-                            </p>
-                          ))
-                        ) : (
-                          <p>No logs available.</p>
-                        )}
-                      </div>
-                    </DialogContent>
-                  </Dialog>
-                }
-
-                /* Transcript dialog trigger, same style as Logs */
-               transcriptTrigger={
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <button
-                      className="inline-flex items-center justify-center rounded-full bg-neutral-600 hover:bg-neutral-500 text-white w-7 h-7"
-                      title="Transcripts"
-                    >
-                      <Eye size={14} />
-                    </button>
-                  </DialogTrigger>
-                  <DialogContent className="bg-neutral-900 text-neutral-200 border border-neutral-800 max-w-[90vw] max-h-[80vh] w-[420px] h-[440px] flex flex-col">
-                      <DialogHeader>
-                        {/* Title row with inline download button */}
-                        <div className="flex items-center">
-                          <DialogTitle className="text-base">Transcripts</DialogTitle>
-                          <button
-                            onClick={downloadTranscription}
-                            className="ml-2 inline-flex items-center justify-center rounded-full bg-neutral-700 hover:bg-neutral-600 text-white w-6 h-6"
-                            title="Download Transcription"
-                            aria-label="Download Transcription"
-                          >
-                            <Download size={12} />
-                          </button>
-                        </div>
-                      </DialogHeader>
-
-                    <div className="mt-2">
-                      <input
-                        type="text"
-                        value={transcriptSearchQuery}
-                        onChange={(e) => setTranscriptSearchQuery(e.target.value)}
-                        placeholder="Search transcripts..."
-                        className="w-full p-1.5 bg-neutral-800 text-neutral-200 text-xs rounded-lg border border-neutral-700 focus:outline-none focus:ring-1 focus:ring-gold-500"
-                      />
-                    </div>
-
-                    <div className="flex-1 overflow-y-auto text-xs text-neutral-300 mt-2">
-                      {filteredTranscripts.length > 0 ? (
-                        filteredTranscripts.map((m) => (
-                          <div key={m.id} className="border-b border-neutral-800 py-1.5 leading-snug">
-                            <span className="text-neutral-400 mr-1">
-                              {new Date(m.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                            </span>
-                            <span className={m.role === "user" ? "text-emerald-400" : m.role === "assistant" ? "text-cyan-300" : "text-neutral-400"}>
-                              {m.role}:
-                            </span>{" "}
-                            <span className="text-neutral-200">{m.text || "…"}</span>
-                          </div>
-                        ))
-                      ) : (
-                        <p className="text-neutral-500">No matching transcripts.</p>
-                      )}
-                    </div>
-                  </DialogContent>
-                </Dialog>
+           <div className="p-3 border-t border-neutral-800">
+            <ControlsBar
+              isConnected={isConnected}
+              isMuted={isMuted}
+              onMute={onMute}
+              onStartCall={onStartCall}
+              onEndCall={onEndCall}
+              voiceTrigger={<VoiceDialogTrigger value={voice} onChange={setVoice} />}
+              logsTrigger={<LogsDialogTrigger events={events} />}
+              transcriptTrigger={
+                <TranscriptDialogTrigger
+                  conversation={conversation as any}
+                  onDownload={downloadTranscription}
+                />
               }
-               /* Usage dialog (replaces the old download button in the bar) */
-              usageTrigger = {
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <button
-                      className="inline-flex items-center justify-center rounded-full bg-neutral-600 hover:bg-neutral-500 text-white w-7 h-7"
-                      title="Usage"
-                    >
-                      <Braces size={14} />
-                    </button>
-                  </DialogTrigger>
-                  <DialogContent className="bg-neutral-900 text-neutral-200 border border-neutral-800 max-w-[90vw] w-[420px]">
-                    <DialogHeader>
-                      <DialogTitle>Session Usage</DialogTitle>
-                    </DialogHeader>
-                    <div className="mt-2 text-xs text-neutral-400">
-                      {/* You already have this component; it reads `events` and shows usage */}
-                      <TokenUsageDisplay messages={events} />
-                    </div>
-                  </DialogContent>
-                </Dialog>
+              usageTrigger={<UsageDialogTrigger events={events} />}
+              selfTest={               
+                <SelfTestDialogTrigger
+                  status={status}
+                  isConnected={isConnected}
+                  connect={connect}
+                  disconnect={disconnect}
+                  sendText={sendText}
+                  conversation={conversation}
+                  componentName={componentName}
+                />
               }
-                selfTest={
-                  <SelfTest
-                    status={status}
-                    isConnected={isConnected}
-                    connect={connect}
-                    disconnect={disconnect}
-                    sendText={sendText}
-                    conversation={conversation}
-                    componentName={componentName}
-                    className="flex items-center"
-                    buttonClassName="inline-flex items-center justify-center rounded-full bg-emerald-600 hover:bg-emerald-500 text-white w-7 h-7"
-                    disabledClassName="inline-flex items-center justify-center rounded-full bg-neutral-500 text-white w-7 h-7"
-                    statusLineClassName="hidden"
-                  />
-                }
-              />
-            </div>
+            />
+          </div>
 
+           
             </div>
 
             <button

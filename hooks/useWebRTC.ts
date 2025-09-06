@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { WebRTCClient } from "@/lib/realtime";
+import type { ConversationItem } from "@/lib/realtime";
 
 export interface AgentConfigInput {
   name?: string;
@@ -25,11 +26,30 @@ interface UseWebRTCOptions {
   maxEventBuffer?: number;
 }
 
-export function useWebRTC(opts: UseWebRTCOptions) {
+interface UseWebRTCReturn {
+  status: string;
+  conversation: ConversationItem[];
+  volume: number;
+  events: any[];
+  connect: (p?: { requestMic?: boolean }) => Promise<void> | void;
+  disconnect: () => void;
+  sendText: (t: string) => void;
+  cancelAssistantSpeech: () => void;
+  pttDown: () => void;
+  pttUp: () => void;
+  setAgent: (a: AgentConfigInput) => void;
+  updateSession: (p: Partial<AgentConfigInput>) => void;
+  registerFunction: (name: string, fn: (args: any) => Promise<any> | any) => void;
+  setMicEnabled: (enabled: boolean) => void;
+  isMicEnabled: () => boolean;
+  getClient: () => WebRTCClient;
+}
+
+export function useWebRTC(opts: UseWebRTCOptions): UseWebRTCReturn {
   const clientRef = useRef<WebRTCClient | null>(null);
 
   const [status, setStatus] = useState("DISCONNECTED");
-  const [conversation, setConversation] = useState<any[]>([]);
+  const [conversation, setConversation] = useState<ConversationItem[]>([]);
   const [volume, setVolume] = useState(0);
   const [events, setEvents] = useState<any[]>([]);
 

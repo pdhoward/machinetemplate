@@ -2,8 +2,11 @@
 
 import React, { useState } from "react";
 import { ShieldCheck } from "lucide-react";
+import type { ConversationItem } from "@/lib/realtime";
 
-type Msg = { role: "user" | "assistant" | "system"; text: string };
+//type Msg = { role: "user" | "assistant" | "system"; text: string };
+
+export type Msg = ConversationItem;
 
 export interface SelfTestProps {
   status: string;
@@ -19,7 +22,7 @@ export interface SelfTestProps {
   className?: string;               // wrapper
   buttonClassName?: string;         // button
   disabledClassName?: string;       // when running
-  statusLineClassName?: string;     // status text
+  statusLineClassName?: string;     // status text  
 }
 
 export default function SelfTest({
