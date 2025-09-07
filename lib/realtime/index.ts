@@ -155,20 +155,26 @@ export class WebRTCClient {
    * Ask the model to call a specific tool right now (best-effort). 
    * Part of the self test check that can be executed by a user
   */
-  public forceToolCall(name: string, args: any, sayAfter?: string) {
-    if (!this.dc || this.dc.readyState !== "open") return;
-    const instructions =
-      `Call the tool ${name} with args ${JSON.stringify(args)}.` +
-      (sayAfter ? ` Then say: ${sayAfter}` : "");
+public forceToolCall(name: string, args?: any, sayAfter?: string) {
+  if (!this.dc || this.dc.readyState !== "open") return;
 
-    this.send({
-      type: "response.create",
-      response: {
-        instructions,
-        tool_choice: { type: "tool", name }, // nudge the model to use this tool
-      },
-    });
-  }
+  // Nudge the model with the arguments via instructions.
+  const argHint = args ? ` with arguments ${JSON.stringify(args)}` : "";
+  const after   = sayAfter ? ` Then reply exactly: ${sayAfter}.` : "";
+
+  this.send({
+    type: "response.create",
+    response: {
+      // Put guidance in the response-scoped instructions so it only affects this turn.
+      instructions: `Call the function ${name}${argHint}.${after}`,
+      tool_choice: {
+        type: "function",
+        function: { name }   // <-- IMPORTANT: { type: "function", function: { name } }
+      }
+    }
+  });
+}
+
 
   /** Toggle the local microphone track on/off without renegotiation. */
   public setMicEnabled(enabled: boolean): void {

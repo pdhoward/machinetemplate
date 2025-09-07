@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { tools as builtinTools } from "@/lib/tools";
 import { useWebRTC } from "@/hooks/useWebRTC";
 import Visualizer from "@/components/visualizer";
 import ControlsBar from "@/components/control-bar";
@@ -88,12 +89,14 @@ const App: React.FC = () => {
   const [isMuted, setIsMuted] = useState(false);
   const [transcriptOpen, setTranscriptOpen] = useState(false);
   const [transcriptSearchQuery, setTranscriptSearchQuery] = useState("");
+
+  const agentTools = useMemo(() => [...defaultTools, ...builtinTools], []);
   
   const [agent, setAgentState] = useState({
     name: "General",
     voice: "alloy",
     instructions: "You are a helpful assistant.",
-    tools: defaultTools as ToolDef[],
+    tools: agentTools,
   });
 
   // logs dialog

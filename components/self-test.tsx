@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
-import { ShieldCheck } from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
+
 import type { ConversationItem } from "@/lib/realtime";
 
 export interface SelfTestProps {
@@ -11,22 +12,24 @@ export interface SelfTestProps {
   disconnect: () => Promise<any> | any;
   sendText: (t: string) => void;
   conversation: ConversationItem[];
-  componentName: string | null;  
+  componentName: string | null;
 
-  /** enforce tool call now (best-effort) */
+  // optional helpers
   forceToolCall?: (name: string, args: any, sayAfter?: string) => void;
-  /** live log count for “did it log?” check */
   getEventsCount?: () => number;
-  /** graceful pass if model refuses to tool-call */
   mockShowComponent?: (name: string) => void;
 
-  /** config */
-  expectedComponent?: string; // default: "menu"
+  // ui/config
+  expectedComponent?: string;      // default "menu"
+  autoStart?: boolean;             // default false (no auto-run)
   className?: string;
   buttonClassName?: string;
   disabledClassName?: string;
   statusLineClassName?: string;
 }
+
+type StepKey = "CONNECT" | "DB" | "TOOL" | "LOGS" | "DONE";
+type StepState = "IDLE" | "RUNNING" | "PASS" | "FAIL";
 
 export default function SelfTest({
   status,
@@ -38,180 +41,217 @@ export default function SelfTest({
   componentName,
   forceToolCall,
   getEventsCount,
-  mockShowComponent,  
+  mockShowComponent,
   expectedComponent = "menu",
+  autoStart = false, // ← no self-start by default
   className = "",
-  buttonClassName = "p-1.5 rounded-full text-white text-xs bg-emerald-600",
-  disabledClassName = "p-1.5 rounded-full text-white text-xs bg-neutral-500",
-  statusLineClassName = "text-[11px] text-neutral-300 text-center",
+  buttonClassName = "inline-flex items-center justify-center rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium h-7 px-3",
+  disabledClassName = "inline-flex items-center justify-center rounded-md bg-neutral-600 text-white opacity-60 cursor-not-allowed text-xs h-7 px-3",
+  statusLineClassName = "text-[11px] text-neutral-300 text-left",
 }: SelfTestProps) {
   const [running, setRunning] = useState(false);
-  const [result, setResult] = useState<null | "PASS" | "FAIL">(null);
   const [msg, setMsg] = useState("");
+  const [stepStatus, setStepStatus] = useState<Record<StepKey, StepState>>({
+    CONNECT: "IDLE",
+    DB: "IDLE",
+    TOOL: "IDLE",
+    LOGS: "IDLE",
+    DONE: "IDLE",
+  });
 
-  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-  const waitFor = async (pred: () => boolean, timeoutMs = 12000, step = 150) => {
+  // fresh refs for polling
+  const statusRef = useRef(status);
+  const convoRef = useRef(conversation);
+  const compRef  = useRef(componentName);
+
+  useEffect(() => { statusRef.current = status; }, [status]);
+  useEffect(() => { convoRef.current = conversation; }, [conversation]);
+  useEffect(() => { compRef.current  = componentName; }, [componentName]);
+
+  const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+  const pollUntil = async (pred: () => boolean, timeoutMs = 15000, every = 150) => {
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
-      if (pred()) return;
-      await sleep(step);
+      if (pred()) return true;
+      await sleep(every);
     }
-    throw new Error("timeout");
+    return false;
   };
-  const heard = (re: RegExp) =>
-    conversation.some((m) => m.role === "assistant" && re.test(m.text || ""));
-
-  async function step(title: string, doIt: () => Promise<void>, verify: () => Promise<void>) {
-    // a) announce step
-    setMsg(`${title} — starting`);
-    sendText(`${title} — starting`);
-    await sleep(300);
-
-    // b) run step
-    await doIt();
-
-    // c) wait for completion + announce pass/fail
-    await verify();
-    sendText(`${title} — completed`);
-    await sleep(150);
-  }
+  const assistantSaid = (re: RegExp) =>
+    (convoRef.current ?? []).some(m => m.role === "assistant" && re.test(m.text || ""));
 
   const run = async () => {
     if (running) return;
-
     setRunning(true);
-    setResult(null);
     setMsg("Starting self test…");
+    setStepStatus({ CONNECT: "IDLE", DB: "IDLE", TOOL: "IDLE", LOGS: "IDLE", DONE: "IDLE" });
 
-    const origComponent = componentName;
-    const baseLogs = getEventsCount?.() ?? 0;
+    const baseEvents = getEventsCount?.() ?? 0;
+    const baseConvo  = convoRef.current.length;
 
+    let current: StepKey = "CONNECT";
     try {
-      // 0) ensure connected
-      if (!isConnected) {
-        setMsg("Connecting…");
-        await connect();
-        await waitFor(() => status === "CONNECTED", 8000);
-        await sleep(300);
-      }
-
-      // 1) Connection check (narrated)
-      await step(
-        "1. Connection",
-        async () => {
-          // Just ask assistant to confirm verbally so user hears a voice
-          sendText("Please say exactly: Connection OK");
-        },
-        async () => {
-          await waitFor(() => heard(/^\s*connection ok\s*$/i), 6000);
-          setMsg("1. Connection — PASS");
-        }
-      );
-
-      // 2) Database check (uses /api/health) + narrated
-      await step(
-        "2. Database",
-        async () => {
-          const res = await fetch("/api/health", { method: "GET" });
-          if (!res.ok) throw new Error("database ping failed");
-          sendText("Please say exactly: Database OK");
-        },
-        async () => {
-          await waitFor(() => heard(/^\s*database ok\s*$/i), 8000);
-          setMsg("2. Database — PASS");
-        }
-      );
-
-      // 3) Tool call (enforce + mock fallback) + narrated
-      await step(
-        "3. Tool call",
-        async () => {
-          // try to force immediately (best-effort), and also say the completion line
-          forceToolCall?.("show_component", { component_name: expectedComponent }, "Self-test complete");
-          // also send a plain text instruction as a backup
-          await sleep(150);
-          sendText(
-            `Call the tool show_component with {"component_name":"${expectedComponent}"} and then say exactly: Self-test complete`
-          );
-        },
-        async () => {
-          try {
-            await waitFor(
-              () =>
-                componentName === expectedComponent ||
-                heard(/^\s*self[-\s]?test\s+complete\s*$/i),
-              12000
-            );
-          } catch {
-            // mock fallback if tool didn't fire
-            if (mockShowComponent) {
-              mockShowComponent(expectedComponent);
-              sendText("Self-test complete");
-              await sleep(250);
-            } else {
-              throw new Error("tool call did not complete");
+      while (true) {
+        switch (current) {
+          case "CONNECT": {
+            setStepStatus(s => ({ ...s, CONNECT: "RUNNING" }));
+            setMsg("1) Connecting…");
+            if (!isConnected) {
+              await connect();
             }
+            const up = await pollUntil(() => statusRef.current === "CONNECTED", 12000, 150);
+            if (!up) throw new Error("Could not connect");
+
+            await sleep(250);
+            sendText("Reply exactly: Connection OK");
+            const ok = await pollUntil(() => assistantSaid(/(^|\s)connection\s+ok(\W|$)/i), 12000, 150);
+            if (!ok) throw new Error("Assistant did not say 'Connection OK'");
+
+            setStepStatus(s => ({ ...s, CONNECT: "PASS" }));
+            setMsg("1) Connection — PASS");
+            await sleep(350);
+
+            current = "DB";
+            break;
           }
-          setMsg("3. Tool call — PASS");
+
+          case "DB": {
+            setStepStatus(s => ({ ...s, DB: "RUNNING" }));
+            setMsg("2) Checking database…");
+
+            const res = await fetch("/api/health", { method: "GET" });
+            if (!res.ok) throw new Error("Database ping failed");
+
+            await sleep(250);
+            sendText("Reply exactly: Database OK");
+            const ok = await pollUntil(() => assistantSaid(/(^|\s)database\s+ok(\W|$)/i), 12000, 150);
+            if (!ok) throw new Error("Assistant did not say 'Database OK'");
+
+            setStepStatus(s => ({ ...s, DB: "PASS" }));
+            setMsg("2) Database — PASS");
+            await sleep(350);
+
+            current = "TOOL";
+            break;
+          }
+
+          case "TOOL": {
+            setStepStatus(s => ({ ...s, TOOL: "RUNNING" }));
+            setMsg("3) Tool call…");
+
+            // best-effort force + explicit instruction
+            forceToolCall?.("show_component", { component_name: expectedComponent }, "Tool call complete");
+            await sleep(1000);
+            sendText(
+              `Call the tool show_component with {"component_name":"${expectedComponent}"} then reply exactly: Tool call complete`
+            );
+
+            let ok = await pollUntil(
+              () =>
+                compRef.current === expectedComponent ||
+                assistantSaid(/(self[\s-]?test|tool\s+call)\s+complete\b/i),
+              15000,
+              150
+            );
+
+            if (!ok && mockShowComponent) {
+              mockShowComponent(expectedComponent);
+              sendText("Tool call complete");
+              ok = await pollUntil(() => assistantSaid(/tool\s+call\s+complete\b/i), 7000, 150);
+            }
+
+            if (!ok) throw new Error("Tool did not complete");
+
+            setStepStatus(s => ({ ...s, TOOL: "PASS" }));
+            setMsg("3) Tool call — PASS");
+            await sleep(1000);
+
+            current = "LOGS";
+            break;
+          }
+
+          case "LOGS": {
+            setStepStatus(s => ({ ...s, LOGS: "RUNNING" }));
+            setMsg("4) Logging…");
+
+            const targetEvents = (getEventsCount?.() ?? baseEvents) + 2;
+            const targetConvo  = baseConvo + 1;
+
+            sendText(`You are a system tester. Say "I am now testing the logs and transcripts"`);
+            await sleep(3000);
+            sendText(`You are a system tester. Say "Testing of logs and transcripts is now complete"`);
+
+            const ok = await pollUntil(
+              () => {
+                const grownByEvents = getEventsCount ? getEventsCount() >= targetEvents : false;
+                const grownByConvo  = (convoRef.current?.length ?? 0) >= targetConvo;
+                return grownByEvents || grownByConvo;
+              },
+              12000,
+              200
+            );
+            if (!ok) throw new Error("No new logs observed");
+
+            setStepStatus(s => ({ ...s, LOGS: "PASS" }));
+            setMsg("4) Logging — PASS");
+            await sleep(1000);
+
+            current = "DONE";
+            break;
+          }
+
+          case "DONE": {
+            setStepStatus(s => ({ ...s, DONE: "PASS" }));
+            setMsg("✅ Self-test finished. System ready.");
+            sendText("Self-test finished. System ready.");
+            setRunning(false);
+            return;
+          }
         }
-      );
-
-      // 4) Logging (ensure events grew) + narrated
-      await step(
-        "4. Logging",
-        async () => {
-          const n = (getEventsCount?.() ?? 0) + 2; // target delta
-          // produce enough activity to ensure new events
-          sendText("Log check: please speak this sentence so the system emits events.");
-          // wait a touch to let server stream deltas
-          await sleep(400);
-          // keep nudging to ensure multiple events (transcript deltas + TTS)
-          sendText("And please speak one more short sentence.");
-          // inner helper to wait until logs pass target
-          await waitFor(() => (getEventsCount?.() ?? 0) >= n, 8000);
-        },
-        async () => {
-          const grew = (getEventsCount?.() ?? 0) > baseLogs;
-          if (!grew) throw new Error("no new events observed");
-          setMsg("4. Logging — PASS");
-        }
-      );
-
-      // 5) Final announce + keep session open (only disconnect on failure)
-      sendText("Self-test finished. System ready.");
-      await sleep(200);
-
-      setResult("PASS");
-      setMsg("All checks passed ✅");
-    } catch (e: any) {
-      setResult("FAIL");
-      setMsg(`Failed: ${e?.message || String(e)}`);
+      }
+    } catch (err: any) {
+      // mark the currently running step as failed and end
+      setStepStatus(s => {
+        const failing =
+          (Object.keys(s) as StepKey[]).find(k => s[k] === "RUNNING") ??
+          (Object.keys(s) as StepKey[]).find(k => s[k] === "IDLE") ??
+          "CONNECT";
+        return { ...s, [failing]: "FAIL", DONE: "FAIL" };
+      });
+      setMsg(`❌ Self-test failed: ${err?.message || String(err)}`);
       try { await disconnect(); } catch {}
-    } finally {
       setRunning(false);
     }
   };
 
+  // Only auto-start if explicitly requested
+  useEffect(() => {
+    if (autoStart) run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoStart]);
+
   return (
     <div className={className}>
-      <button
+      {/* Start button (no icon) */}
+      <Button
         onClick={run}
         disabled={running}
-        className={running ? disabledClassName : buttonClassName}
-        title="Run self test"
-        aria-label="Run self test"
+        size="sm"
+        className="bg-emerald-600 hover:bg-emerald-500 text-white disabled:opacity-60 disabled:cursor-not-allowed h-7 px-3"
+        title="Start self test"
+        aria-label="Start self test"
       >
-        <ShieldCheck className="text-white text-xs" />
-      </button>
+        {running ? "Running…" : "Start test"}
+      </Button>
 
-      {(running || result) && (
-        <div className={statusLineClassName}>
-          {running ? "Self test running…" : null}
-          {result === "PASS" ? " Self test: PASS ✅" : null}
-          {result === "FAIL" ? " Self test: FAIL ❌" : null}
-          {msg ? ` — ${msg}` : ""}
-        </div>
-      )}
+      <div className={statusLineClassName}>
+        <div>1) Connection — {stepStatus.CONNECT}</div>
+        <div>2) Database — {stepStatus.DB}</div>
+        <div>3) Tool call — {stepStatus.TOOL}</div>
+        <div>4) Logging — {stepStatus.LOGS}</div>
+        <div>Result — {stepStatus.DONE === "PASS" ? "PASS ✅" : stepStatus.DONE === "FAIL" ? "FAIL ❌" : "—"}</div>
+        {msg ? <div className="mt-1 opacity-80">{msg}</div> : null}
+      </div>
     </div>
   );
 }

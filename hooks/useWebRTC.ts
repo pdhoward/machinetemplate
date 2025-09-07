@@ -43,7 +43,7 @@ interface UseWebRTCReturn {
   setMicEnabled: (enabled: boolean) => void;
   isMicEnabled: () => boolean;
   getClient: () => WebRTCClient;
-  forceToolCall: (name: string, args: any, sayAfter?: string) => void;
+  forceToolCall: (name: string, args?: any, sayAfter?: string) => void;
 }
 
 export function useWebRTC(opts: UseWebRTCOptions): UseWebRTCReturn {
