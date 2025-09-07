@@ -7,7 +7,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { siteConfig } from "@/config/site";
 import { Toaster } from "@/components/ui/sonner"
 import { Analytics } from "@vercel/analytics/react"
-import { TranslationsProvider } from "@/components/translations-context"
+import Providers from './providers';
 import { Banner } from "@/components/banner";
 
 const geistSans = Geist({
@@ -48,7 +48,7 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <TranslationsProvider>
+          <Providers>
             <div className="relative flex min-h-dvh flex-col bg-background items-center">
               <Header />
               <Banner />
@@ -57,7 +57,7 @@ export default function RootLayout({
               </main>
             </div>
             <Toaster />
-          </TranslationsProvider>
+          </Providers>
         </ThemeProvider>
         <Analytics />
       </body>

@@ -18,8 +18,7 @@ interface UseWebRTCOptions {
   getAgent: () => AgentConfigInput;
   appendModelVoiceToUrl?: boolean;
   turnDetection?: any;
-  onShowComponent?: (name: string) => void;
-  onFunctionCall?: (call: any) => void;
+  onShowComponent?: (name: string) => void; 
   // You can still pass one in; we’ll also capture internally to `events`
   onServerEvent?: (ev: any) => void;
   // Optional: how many events to keep (defaults to 500)
@@ -102,8 +101,7 @@ export function useWebRTC(opts: UseWebRTCOptions): UseWebRTCReturn {
       onStatus: setStatus,
       onConversation: setConversation,
       onVolume: setVolume,
-      onShowComponent: opts.onShowComponent,
-      onFunctionCall: opts.onFunctionCall,
+      onShowComponent: opts.onShowComponent,      
       onServerEvent: handleServerEvent, // <-- buffer into `events`
     });
   }
@@ -111,11 +109,10 @@ export function useWebRTC(opts: UseWebRTCOptions): UseWebRTCReturn {
   // keep callbacks fresh
   useEffect(() => {
     clientRef.current?.setCallbacks({
-      onShowComponent: opts.onShowComponent,
-      onFunctionCall: opts.onFunctionCall,
+      onShowComponent: opts.onShowComponent,      
       onServerEvent: handleServerEvent,
     });
-  }, [opts.onShowComponent, opts.onFunctionCall, handleServerEvent]);
+  }, [opts.onShowComponent, handleServerEvent]);
 
   const api = useMemo(() => {
     const c = clientRef.current!;

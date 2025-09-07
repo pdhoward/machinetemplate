@@ -19,8 +19,7 @@ import { Send } from "lucide-react"; // you already import some
 import { motion } from "framer-motion";
 import { useToolsFunctions } from "@/hooks/use-tools";
 import {Diagnostics} from "@/components/diagnostics"
-
-
+ 
 type ToolDef = {
   type: "function";                   
   name: string;
@@ -36,7 +35,7 @@ const defaultTools: ToolDef[] = [
     description: "Show UI component (image/video/panel) by name.",
     parameters: {
       type: "object",
-      properties: { component_name: { type: "string" } },
+      properties: { component_name: { type: "string", description: "Component key to display" } },
       required: ["component_name"],
       additionalProperties: false,
     },
@@ -91,6 +90,8 @@ const App: React.FC = () => {
   const [transcriptSearchQuery, setTranscriptSearchQuery] = useState("");
 
   const agentTools = useMemo(() => [...defaultTools, ...builtinTools], []);
+
+  const toolsFunctions = useToolsFunctions(); ///set of locally defined tools in hook
   
   const [agent, setAgentState] = useState({
     name: "General",
@@ -127,18 +128,7 @@ const App: React.FC = () => {
     defaultVoice: "alloy",
     appendModelVoiceToUrl: true, // set false for server-only config
     getAgent: () => agent,
-    onShowComponent: (name) => setComponentName(name),
-    onFunctionCall: ({ name, arguments: argsString, respond }) => {
-      if (name === "show_component") {
-        try {
-          const { component_name } = JSON.parse(argsString);
-          setComponentName(component_name);
-        } catch {
-          // ignore parse errors; respond with failure
-        }
-        respond({ ok: true });
-      }
-    },
+    onShowComponent: (name) => setComponentName(name),    
   });
 
   const filteredTranscripts = useMemo(() => {
@@ -153,27 +143,36 @@ const App: React.FC = () => {
       })
       .slice(-200);
   }, [conversation, transcriptSearchQuery]);
+ 
 
-  // Register any local “tool” functions once
-  useEffect(() => {
-    registerFunction("get_time", async () => ({ time: new Date().toISOString() }));
-  }, [registerFunction]);
+    // register the ,cal set of tools everything once
+    useEffect(() => {
+      // localName (your hook keys) -> tool name in the model schema
+      const nameMap: Record<string, string> = {
+        timeFunction: "getCurrentTime",
+        backgroundFunction: "changeBackgroundColor",
+        partyFunction: "partyMode",
+        launchWebsite: "launchWebsite",
+        copyToClipboard: "copyToClipboard",
+        scrapeWebsite: "scrapeWebsite",
+        //expose more tools as needed
+      };
 
-  // Register the toolbox functions you already built
-  const toolsFunctions = useToolsFunctions();
-  useEffect(() => {
-    const nameMap: Record<string, string> = {
-      timeFunction: "getCurrentTime",
-      backgroundFunction: "changeBackgroundColor",
-      partyFunction: "partyMode",
-      launchWebsite: "launchWebsite",
-      copyToClipboard: "copyToClipboard",
-      scrapeWebsite: "scrapeWebsite",
-    };
-    Object.entries(toolsFunctions).forEach(([localName, func]) => {
-      registerFunction(nameMap[localName], func);
-    });
-  }, [registerFunction, toolsFunctions]);
+      // register toolbox functions
+      Object.entries(toolsFunctions).forEach(([localName, fn]) => {
+        const toolName = nameMap[localName];
+        if (toolName && typeof fn === "function") {
+          registerFunction(toolName, fn);
+        }
+      });
+
+      // register the visual helper tool
+      registerFunction("show_component", async ({ component_name }) => {
+        setComponentName(component_name);
+        return { ok: true, shown: component_name };
+      });
+    }, [registerFunction, toolsFunctions]); 
+
 
   // Keep agent voice in sync with selector
   useEffect(() => {

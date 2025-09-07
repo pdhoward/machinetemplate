@@ -154,26 +154,41 @@ export class WebRTCClient {
   /*
    * Ask the model to call a specific tool right now (best-effort). 
    * Part of the self test check that can be executed by a user
+   * This function is not strictly needed since all tools are in Function Registry
+   * But this is used in deterministic self test to drive a fast reliable trugger
   */
 public forceToolCall(name: string, args?: any, sayAfter?: string) {
-  if (!this.dc || this.dc.readyState !== "open") return;
+  // (A) Prime the model with the exact arguments 
+  if (args) {
+    this.send({
+      type: "conversation.item.create",
+      item: {
+        type: "message",
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: `Use the function ${name} with exactly this JSON: ${JSON.stringify(args)}`
+          }
+        ],
+      },
+    });
+  }
 
-  // Nudge the model with the arguments via instructions.
-  const argHint = args ? ` with arguments ${JSON.stringify(args)}` : "";
-  const after   = sayAfter ? ` Then reply exactly: ${sayAfter}.` : "";
-
+  // (B) instruct model to immediately call that function
   this.send({
     type: "response.create",
     response: {
-      // Put guidance in the response-scoped instructions so it only affects this turn.
-      instructions: `Call the function ${name}${argHint}.${after}`,
       tool_choice: {
-        type: "function",
-        function: { name }   // <-- IMPORTANT: { type: "function", function: { name } }
-      }
-    }
+        type: "function",   // ✅ not "tool"
+        name,               // e.g. "show_component"
+      },     
+      instructions: sayAfter ? `After the function runs, say: ${sayAfter}` : undefined,
+      metadata: { forced: true },
+    },
   });
 }
+
 
 
   /** Toggle the local microphone track on/off without renegotiation. */
