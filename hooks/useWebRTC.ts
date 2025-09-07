@@ -43,6 +43,7 @@ interface UseWebRTCReturn {
   setMicEnabled: (enabled: boolean) => void;
   isMicEnabled: () => boolean;
   getClient: () => WebRTCClient;
+  forceToolCall: (name: string, args: any, sayAfter?: string) => void;
 }
 
 export function useWebRTC(opts: UseWebRTCOptions): UseWebRTCReturn {
@@ -128,13 +129,14 @@ export function useWebRTC(opts: UseWebRTCOptions): UseWebRTCReturn {
       setAgent: (a: AgentConfigInput) => c.setAgent(a),
       updateSession: (p: Partial<AgentConfigInput>) => c.updateSession(p),
       registerFunction: (name: string, fn: (args: any) => Promise<any> | any) => c.registerFunction(name, fn),
-      // NEW: mic control + access to client
+      
       setMicEnabled: (enabled: boolean) => c.setMicEnabled(enabled),
       isMicEnabled: () => c.isMicEnabled(),
       getClient: () => c,
+       
+      forceToolCall: (name: string, args: any, sayAfter?: string) => c.forceToolCall(name, args, sayAfter)
     };
   }, []);
-
-  // return `events` so it can replace your old `msgs`
+  
   return { status, conversation, volume, events, ...api };
 }

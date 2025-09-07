@@ -151,6 +151,24 @@ export class WebRTCClient {
   registerFunction(name: string, fn: (args: any) => Promise<any> | any) {
     this.functionRegistry[name] = fn;
   }
+  /*
+   * Ask the model to call a specific tool right now (best-effort). 
+   * Part of the self test check that can be executed by a user
+  */
+  public forceToolCall(name: string, args: any, sayAfter?: string) {
+    if (!this.dc || this.dc.readyState !== "open") return;
+    const instructions =
+      `Call the tool ${name} with args ${JSON.stringify(args)}.` +
+      (sayAfter ? ` Then say: ${sayAfter}` : "");
+
+    this.send({
+      type: "response.create",
+      response: {
+        instructions,
+        tool_choice: { type: "tool", name }, // nudge the model to use this tool
+      },
+    });
+  }
 
   /** Toggle the local microphone track on/off without renegotiation. */
   public setMicEnabled(enabled: boolean): void {

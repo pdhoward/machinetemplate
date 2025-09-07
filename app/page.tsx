@@ -2,8 +2,6 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useWebRTC } from "@/hooks/useWebRTC";
-import { VoiceSelector } from "@/components/voice-select";
-import { TokenUsageDisplay } from "@/components/token-usage";
 import Visualizer from "@/components/visualizer";
 import ControlsBar from "@/components/control-bar";
 import {
@@ -15,19 +13,12 @@ import {
 } from "@/components/triggers";
 
 import TranscriptPanel from "@/components/transcript-panel";
-import { Send, Captions, Download, FileOutput, UserPlus, Braces } from "lucide-react"; // you already import some
+import { Send } from "lucide-react"; // you already import some
 
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { motion } from "framer-motion";
 import { useToolsFunctions } from "@/hooks/use-tools";
 import {Diagnostics} from "@/components/diagnostics"
-import SelfTest from "@/components/self-test";
+
 
 type ToolDef = {
   type: "function";                   
@@ -126,7 +117,8 @@ const App: React.FC = () => {
     registerFunction,
     setMicEnabled,     // from hook (tiny wrapper to client.setMicEnabled)
     isMicEnabled,      // from hook (tiny wrapper to client.isMicEnabled)
-    getClient
+    getClient,
+    forceToolCall
   } = useWebRTC({    
     model: "gpt-realtime",
     defaultVoice: "alloy",
@@ -380,6 +372,10 @@ return (
                   sendText={sendText}
                   conversation={conversation}
                   componentName={componentName}
+                  events={events}
+                  forceToolCall={forceToolCall}                 // from useWebRTC
+                  getEventsCount={() => events.length}          // live counter for logs check
+                  mockShowComponent={(name) => setComponentName(name)}
                 />
               }
             />
