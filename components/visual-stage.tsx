@@ -61,15 +61,7 @@ export default function VisualStage({ open, onOpenChange, payload }: Props) {
                 </DialogDescription>
               ) : null}
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="text-neutral-400 hover:text-neutral-200"
-              onClick={() => onOpenChange(false)}
-              aria-label="Close"
-            >
-              <X size={16} />
-            </Button>
+            
           </div>
         </DialogHeader>
 

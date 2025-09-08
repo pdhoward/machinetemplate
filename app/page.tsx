@@ -15,7 +15,6 @@ import {
 } from "@/components/triggers";
 
 import { Send } from "lucide-react"; 
-
 import { motion } from "framer-motion";
 import { useToolsFunctions } from "@/hooks/use-tools";
 import {Diagnostics} from "@/components/diagnostics"
@@ -64,7 +63,7 @@ const App: React.FC = () => {
 
   // anchor for the visualizer card
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  // anchor for the 
+  // anchor for the visual components
   const stageRef = useRef<VisualStageHandle>(null)
 
   const {
