@@ -1,3 +1,4 @@
+// components/header.tsx
 "use client";
 
 import { Button } from "@/components/ui/button";
@@ -12,13 +13,13 @@ import { LanguageSwitcher } from "@/components/language-switcher";
 import { useTranslations } from "@/components/translations-context";
 
 export function Header() {
-  const { t } = useTranslations()
+  const { t } = useTranslations();
   return (
     <motion.header
       initial={{ y: -20, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       transition={{ duration: 0.4 }}
-      className="w-full sticky top-0 z-50 border-b bg-background"
+      className="w-full sticky top-10 mt-10 z-[90] border-b bg-background"
     >
       <div className="container mx-auto px-4 h-12 flex items-center justify-between gap-2">
         <MobileNav />
@@ -29,11 +30,11 @@ export function Header() {
           className="max-md:hidden flex items-center"
         >
           <Link href="/" className="flex gap-3 items-center">
-            <motion.h1 
+            <motion.h1
               className="text-lg font-medium tracking-tighter flex gap-1 items-center"
               whileHover={{ scale: 1.02 }}
             >
-              {t('header.logo')}
+              {t("header.logo")}
             </motion.h1>
             <motion.div
               initial={{ opacity: 0, scale: 0.8 }}
@@ -41,12 +42,12 @@ export function Header() {
               transition={{ delay: 0.3 }}
             >
               <Badge variant="outline" className="text-normal">
-                {t('header.beta')}
+                {t("header.beta")}
               </Badge>
             </motion.div>
           </Link>
         </motion.nav>
-        <motion.div 
+        <motion.div
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.1 }}
@@ -66,8 +67,8 @@ export function Header() {
                 className="flex gap-3 items-center max-md:h-9 max-md:w-9 max-md:px-0"
                 aria-label="Give a star on GitHub"
               >
-                <span className="hidden md:block">{t('header.github')}</span>{" "}
-                <StarIcon className="motion-preset-spin motion-loop-twice"/>
+                <span className="hidden md:block text-xs">{t("header.github")}</span>{" "}
+                <StarIcon className="motion-preset-spin motion-loop-twice" />
               </Button>
             </motion.div>
           </Link>
@@ -84,7 +85,7 @@ export function Header() {
                 className="flex gap-3 items-center max-md:h-9 max-md:w-9 max-md:px-0"
                 aria-label="Follow on Twitter"
               >
-                <span className="hidden md:block">{t('header.twitter')}</span>{" "}
+                <span className="hidden md:block text-xs">{t("header.twitter")}</span>{" "}
                 <TwitterIcon />
               </Button>
             </motion.div>

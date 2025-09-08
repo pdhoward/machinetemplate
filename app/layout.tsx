@@ -1,3 +1,4 @@
+// app/layout.tsx
 import type { Metadata } from "next";
 import { Geist } from "next/font/google";
 import "./globals.css";
@@ -5,35 +6,39 @@ import { Header } from "@/components/header";
 import { cn } from "@/lib/utils";
 import { ThemeProvider } from "@/components/theme-provider";
 import { siteConfig } from "@/config/site";
-import { Toaster } from "@/components/ui/sonner"
-import { Analytics } from "@vercel/analytics/react"
-import Providers from './providers';
-import { Banner } from "@/components/banner";
+import { Toaster } from "@/components/ui/sonner";
+import { Analytics } from "@vercel/analytics/react";
+import Providers from "./providers";
+import Banner from "@/components/banner"; // default export above
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {  
-  title: 'Strategic Machines | Agents',
-  description: 'Strategic Machines is an AI-first company, delivering AI Agents for business.',
-  keywords: 'Strategic Machines, AI, Voice Agents, Ai Business Apps AI Development, AI Automation, Language Models, OpenAI, Anthropic, Hugging Face',
+export const metadata: Metadata = {
+  title: "Strategic Machines | Agents",
+  description:
+    "Strategic Machines is an AI-first company, delivering AI Agents for business.",
+  keywords:
+    "Strategic Machines, AI, Voice Agents, Ai Business Apps AI Development, AI Automation, Language Models, OpenAI, Anthropic, Hugging Face",
   openGraph: {
-    title: 'Strategic Machines | AI Agents',
-    siteName: 'Strategic Machines',
-    url: 'https://www.strategicmachines.ai/',
-    images: [{
-      url: 'https://res.cloudinary.com/stratmachine/image/upload/v1592332360/machine/icon-384x384_liietq.png',
-    }],
-  },    
-}
+    title: "Strategic Machines | AI Agents",
+    siteName: "Strategic Machines",
+    url: "https://www.strategicmachines.ai/",
+    images: [
+      {
+        url: "https://res.cloudinary.com/stratmachine/image/upload/v1592332360/machine/icon-384x384_liietq.png",
+      },
+    ],
+  },
+};
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
   return (
     <html lang="en" suppressHydrationWarning>
       <body
@@ -42,20 +47,16 @@ export default function RootLayout({
           geistSans.variable
         )}
       >
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="dark"
-          enableSystem
-          disableTransitionOnChange
-        >
-          <Providers>
+        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem disableTransitionOnChange>
+          <Providers>           
             <div className="relative flex min-h-dvh flex-col bg-background items-center">
-              <Header />
               <Banner />
+              <Header />
               <main className="flex flex-1 justify-center items-start">
                 {children}
               </main>
             </div>
+
             <Toaster />
           </Providers>
         </ThemeProvider>

@@ -14,7 +14,7 @@ import {
 } from "@/components/triggers";
 
 import TranscriptPanel from "@/components/transcript-panel";
-import { Send } from "lucide-react"; // you already import some
+import { Send } from "lucide-react"; 
 
 import { motion } from "framer-motion";
 import { useToolsFunctions } from "@/hooks/use-tools";

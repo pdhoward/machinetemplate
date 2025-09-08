@@ -1,7 +1,7 @@
 export const siteConfig = {
-  name: "Machine Template", 
+  name: "Strategic Machines", 
   description: "Basic Structure for the Machine Voice Agent Platform",
-  author: "pdhoward",
+  author: "Strategic Machines",
   links: {
     twitter: "https://x.com/urban_coder",
     github: "https://github.com/pdhoward",
