@@ -1,7 +1,18 @@
-'use client';
+// app/providers.tsx
+"use client";
 
-import { TranslationsProvider } from '@/components/translations-context';
+import React from "react";
+import { TenantProvider } from "@/context/tenant-context";
+import { TranslationsProvider } from "@/context/translations-context";
 
-export default function Providers({ children }: { children: React.ReactNode }) {
-  return <TranslationsProvider>{children}</TranslationsProvider>;
+type Props = {
+  children: React.ReactNode;
+};
+
+export default function Providers({ children }: Props) {
+  return (
+    <TenantProvider>
+      <TranslationsProvider>{children}</TranslationsProvider>
+    </TenantProvider>
+  );
 }

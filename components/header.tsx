@@ -10,7 +10,7 @@ import { siteConfig } from "@/config/site";
 import { TwitterIcon, StarIcon } from "lucide-react";
 import { motion } from "framer-motion";
 import { LanguageSwitcher } from "@/components/language-switcher";
-import { useTranslations } from "@/components/translations-context";
+import { useTranslations } from "@/context/translations-context";
 
 export function Header() {
   const { t } = useTranslations();

@@ -3,7 +3,7 @@
 import { toast } from "sonner"
 import confetti from 'canvas-confetti'
 import { animate as framerAnimate } from "framer-motion"
-import { useTranslations } from "@/components/translations-context"
+import { useTranslations } from "@/context/translations-context"
 import FirecrawlApp, { ScrapeResponse } from '@mendable/firecrawl-js';
 
 export const useToolsFunctions = () => {

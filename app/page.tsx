@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { tools as builtinTools } from "@/lib/tools";
+import { tools as builtinTools } from "@/lib/basictools";
 import { useWebRTC } from "@/hooks/useWebRTC";
 import Visualizer from "@/components/visualizer";
 import VisualStageHost, { VisualStageHandle } from "@/components/visual-stage-host";
@@ -18,6 +18,17 @@ import { Send } from "lucide-react";
 import { motion } from "framer-motion";
 import { useToolsFunctions } from "@/hooks/use-tools";
 import {Diagnostics} from "@/components/diagnostics"
+
+import { 
+  missingRequired, 
+  buildPromptFromMissing,
+  humanizeList,
+  runEffect,
+
+} from "@/lib/agent/helper";
+
+import { ActionDoc } from "@/types/actions";
+import { useTenant } from "@/context/tenant-context";
  
 type ToolDef = {
   type: "function";                   
@@ -60,6 +71,8 @@ const App: React.FC = () => {
     instructions: "You are a helpful assistant.",
     tools: agentTools,
   });
+
+   const { tenantId } = useTenant();  
 
   // anchor for the visualizer card
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -121,6 +134,51 @@ const App: React.FC = () => {
           return { ok: true };
       });
     }, [registerFunction, toolsFunctions]); 
+
+    /* 
+     execute the actions fetched from the db for this tenant
+    */
+    useEffect(() => {
+      (async () => {
+        const res = await fetch(`/api/actions/${tenantId}`, { cache: "no-store" });
+        const actions: ActionDoc[] = await res.json();
+
+        // Register execute_action once
+        registerFunction("execute_action", async ({ action_id, input }) => {
+          const action = actions.find(a => a.actionId === action_id);
+          if (!action) return { ok: false, error: `Unknown action: ${action_id}` };
+
+          // 1) derive missing slots from JSON Schema
+          const missing = missingRequired(action.inputSchema, input);
+          if (missing.length) {
+            return {
+              ok: false,
+              next: { missing, prompt: buildPromptFromMissing(missing) },
+              speak: `I’ll need ${humanizeList(missing)}.`,
+            };
+          }
+
+          // 2) run effect (server-side URL or local operation)
+          const result = await runEffect(action, input);
+
+          // 3) UI instruction (action default may be overridden by result.ui)
+          const ui = result.ui ?? action.ui;
+          if (ui?.open) stageRef.current?.openComponent(ui.open.component, { ...ui.open.props, input, result });
+          if (ui?.close) stageRef.current?.close();
+
+          // 4) short line to say
+          const speak = result.speak ?? action.speakTemplate ?? "Done.";
+          return { ok: true, data: result.data, ui, speak };
+        });
+
+        // (Optional) also register a **reader** so LLM can browse “things”
+        registerFunction("list_things", async ({ type }) => {
+          const res = await fetch(`/api/things/${tenantId}?type=${type ?? ""}`);
+          return { ok: true, data: await res.json() };
+        });
+      })();
+    }, [registerFunction, tenantId]);
+
 
 
   // Keep agent voice in sync with selector
