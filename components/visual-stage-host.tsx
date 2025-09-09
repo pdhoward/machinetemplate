@@ -17,17 +17,17 @@ import {
 export type ShowArgs = {
   component_name: string;
   title?: string;
-  description?: string;
+  description?: string;  
   size?: "sm" | "md" | "lg" | "xl";
   props?: any;
-  media?: { type: "image" | "video"; src: string };
+  media?: { type: "image" | "video"; src: string; alt?: string; };
   url?: string;
 };
 
 export type VisualStageHandle = {
   show: (args: ShowArgs) => void;
-  openComponent: (component: string, props?: any) => void;
-  close: () => void;
+  hide: () => void;          // <-- add this
+  isOpen: () => boolean;     // (optional but handy)
 };
 
 type Registry = Record<
@@ -109,73 +109,38 @@ function computeWidth(size?: ShowArgs["size"]) {
   }
 }
 
-const VisualStageHost = forwardRef<VisualStageHandle, Props>(
-  ({ registry }, ref) => {
-    const [open, setOpen] = useState(false);
-    const [payload, setPayload] = useState<ShowArgs | null>(null);
+const VisualStageHost = forwardRef<VisualStageHandle, {}>(function VisualStageHost(_, ref) {
+  const [open, setOpen] = useState(false);
+  const [payload, setPayload] = useState<ShowArgs | null>(null);
 
-    const reg = useMemo(() => ({ ...baseRegistry, ...(registry || {}) }), [registry]);
+  const show = (args: ShowArgs) => {
+    setPayload(args);
+    setOpen(true);
+  };
+  const hide = () => setOpen(false);
+  const isOpen = () => open;
 
-    const show = (args: ShowArgs) => {
-      setPayload(args);
-      setOpen(true);
-    };
+  useImperativeHandle(ref, () => ({ show, hide, isOpen }), [open]);
 
-    const openComponent = (component: string, props?: any) => {
-      show({ component_name: component, props });
-    };
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogContent className="bg-neutral-900 text-neutral-200 border-neutral-800 max-w-[90vw] w-[720px]">
+        <DialogHeader>
+          <DialogTitle>{payload?.title ?? payload?.component_name ?? "Preview"}</DialogTitle>
+        </DialogHeader>
 
-    const close = () => setOpen(false);
-
-    useImperativeHandle(ref, () => ({ show, openComponent, close }), []);
-
-    const Comp = payload ? (reg[payload.component_name] as any) : null;
-    const widthClass = computeWidth(payload?.size);
-
-    return (
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent
-          className={`bg-neutral-900 text-neutral-200 border border-neutral-800 max-w-[95vw] ${widthClass}`}
-        >
-          <DialogHeader>
-            <DialogTitle className="flex items-center justify-between">
-              <span>{payload?.title ?? "Preview"}</span>
-            </DialogTitle>
-          </DialogHeader>
-
-          {payload?.description ? (
-            <p className="text-sm text-neutral-400 mb-2">{payload.description}</p>
-          ) : null}
-
-          {/* Priority: component -> media -> url -> empty */}
-          {Comp ? (
-            <div className="mt-1"><Comp {...(payload?.props || {})} /></div>
-          ) : payload?.media ? (
-            payload.media.type === "image" ? (
-              <img
-                src={payload.media.src}
-                alt=""
-                className="rounded-lg border border-neutral-800"
-              />
-            ) : (
-              <video
-                src={payload.media.src}
-                controls
-                className="w-full rounded-lg border border-neutral-800"
-              />
-            )
-          ) : payload?.url ? (
-            <iframe
-              src={payload.url}
-              className="w-full h-[60vh] rounded-lg border border-neutral-800"
-            />
-          ) : (
-            <div className="text-sm text-neutral-400">Nothing to display.</div>
+        <div className="mt-2">
+          {payload?.media?.type === "image" && (
+            <img src={payload.media.src} alt={payload.media.alt ?? ""} className="rounded-lg max-h-[60vh] object-contain" />
           )}
-        </DialogContent>
-      </Dialog>
-    );
-  }
-);
+          {payload?.media?.type === "video" && (
+            <video src={payload.media.src} controls className="rounded-lg max-h-[60vh] w-full" />
+          )}
+          {/* TODO: render dynamic React components keyed by payload.component_name */}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+});
 
 export default VisualStageHost;

@@ -64,7 +64,7 @@ export function useWebRTC(opts: UseWebRTCOptions): UseWebRTCReturn {
       body: JSON.stringify({
         model: opts.model ?? "gpt-4o-realtime-preview-2024-12-17",
         voice: agent.voice ?? opts.defaultVoice ?? "alloy",
-        instructions: agent.instructions ?? "Be helpful and concise.",
+        instructions: agent.instructions, // includes the system prompt from main page
         tools: agent.tools ?? [],
         turn_detection:
           opts.turnDetection ?? {

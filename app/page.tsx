@@ -29,13 +29,9 @@ import {
 
 import { ActionDoc } from "@/types/actions";
 import { useTenant } from "@/context/tenant-context";
+import type {ToolDef} from "@/types/tools"
+import { coreTools } from "@/types/tools";  // 
  
-type ToolDef = {
-  type: "function";                   
-  name: string;
-  description: string;
-  parameters?: any;                  
-};
 
 // --- tool schema you expose to the model ---
 const defaultTools: ToolDef[] = [
@@ -52,6 +48,15 @@ const defaultTools: ToolDef[] = [
   },
 ];
 
+const SYSTEM_PROMPT = `
+You are the Cypress Resorts agent. Prefer the tool execute_action to perform tasks using action_id and input.
+Use list_things to browse items (type: "unit", "spa_treatment", "media").
+Use show_component when you need to display UI (e.g., "payment", "menu", "room").
+If you cannot complete a request with execute_action, you may call getReservations.
+Keep replies short, warm, professional. Ask for missing required fields only.
+Never request full card details by voice—use payment_token.
+`;
+
 // ---------- page ----------
 const App: React.FC = () => {
   const [isOpen, setIsOpen] = useState(true); // for the close “×” button
@@ -66,10 +71,10 @@ const App: React.FC = () => {
   const toolsFunctions = useToolsFunctions(); ///set of locally defined tools in hook
   
   const [agent, setAgentState] = useState({
-    name: "General",
+    name: "Cypress Resorts",
     voice: "alloy",
-    instructions: "You are a helpful assistant.",
-    tools: agentTools,
+    instructions: SYSTEM_PROMPT,
+    tools: coreTools,
   });
 
    const { tenantId } = useTenant();  
@@ -127,66 +132,91 @@ const App: React.FC = () => {
         }
       });
 
-      // register the visual helper tool
+       // register the visual helper tool
        registerFunction("show_component", async (args: any) => {
           // args can be { component_name, title?, description?, size?, props?, media?, url? }
           stageRef.current?.show(args);
           return { ok: true };
       });
+        // data-driven executor (calls your actions from Mongo)
+       registerFunction("execute_action", async ({ action_id, input }) => {
+           const res = await fetch(`/api/actions/${tenantId}`, { cache: "no-store" });
+            if (!res.ok) {
+              console.error("Failed to fetch actions:", res.status);
+              return;
+            }
+            const actions: ActionDoc[] = await res.json();
+             registerFunction("execute_action", async ({ action_id, input }: { action_id: string; input?: any }) => {
+            const action = actions.find(a => a.actionId === action_id);
+            if (!action) {
+              return { ok: false, error: `Unknown action: ${action_id}` };
+            }
+
+            // Validate required inputs from the JSON Schema
+            const missing = missingRequired(action.inputSchema, input);
+            if (missing.length) {
+              const prompt = buildPromptFromMissing(missing);
+              return {
+                ok: false,
+                next: { missing, prompt },
+                speak: `I’ll need ${humanizeList(missing)}.`,
+              };
+            }
+
+        try {
+              // Execute the action (HTTP or local operation) via your helper
+              const result = await runEffect(action, input);
+
+              // Optional UI instructions (action default can be overridden by result.ui)
+              const ui = result?.ui ?? action.ui;
+              if (ui?.open) {
+                // normalize into your stage API
+                stageRef.current?.show({
+                  component_name: ui.open.component,
+                  ...(ui.open.props ?? {}),
+                  input,
+                  result,
+                });
+              }
+              if (ui?.close) {
+                stageRef.current?.hide?.();
+              }
+
+              // A short line the model can read aloud
+              const speak = result?.speak ?? action.speakTemplate ?? "Done.";
+              return { ok: true, data: result?.data, ui, speak };
+            } catch (err: any) {
+              return { ok: false, error: String(err?.message || err) };
+            }
+          });
+              
+        });
+
+        // list_things
+        registerFunction("list_things", async ({ type }) => {
+          const r = await fetch(`/api/things/${tenantId}?type=${type ?? ""}`, { cache: "no-store" });
+          return { ok: true, data: await r.json() };
+        });
+
+        // optional fallback: proxy to server reservations supervisor
+        registerFunction("getReservations", async ({ relevantContextFromLastUserMessage }) => {
+          const r = await fetch("/api/execute-tool", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ name: "getReservations", input: { relevantContextFromLastUserMessage } }),
+          });
+          return await r.json(); // expected { ok, data?/speak?/ui? }
+        });
     }, [registerFunction, toolsFunctions]); 
 
-    /* 
-     execute the actions fetched from the db for this tenant
-    */
-    useEffect(() => {
-      (async () => {
-        const res = await fetch(`/api/actions/${tenantId}`, { cache: "no-store" });
-        const actions: ActionDoc[] = await res.json();
+    
 
-        // Register execute_action once
-        registerFunction("execute_action", async ({ action_id, input }) => {
-          const action = actions.find(a => a.actionId === action_id);
-          if (!action) return { ok: false, error: `Unknown action: ${action_id}` };
-
-          // 1) derive missing slots from JSON Schema
-          const missing = missingRequired(action.inputSchema, input);
-          if (missing.length) {
-            return {
-              ok: false,
-              next: { missing, prompt: buildPromptFromMissing(missing) },
-              speak: `I’ll need ${humanizeList(missing)}.`,
-            };
-          }
-
-          // 2) run effect (server-side URL or local operation)
-          const result = await runEffect(action, input);
-
-          // 3) UI instruction (action default may be overridden by result.ui)
-          const ui = result.ui ?? action.ui;
-          if (ui?.open) stageRef.current?.openComponent(ui.open.component, { ...ui.open.props, input, result });
-          if (ui?.close) stageRef.current?.close();
-
-          // 4) short line to say
-          const speak = result.speak ?? action.speakTemplate ?? "Done.";
-          return { ok: true, data: result.data, ui, speak };
-        });
-
-        // (Optional) also register a **reader** so LLM can browse “things”
-        registerFunction("list_things", async ({ type }) => {
-          const res = await fetch(`/api/things/${tenantId}?type=${type ?? ""}`);
-          return { ok: true, data: await res.json() };
-        });
-      })();
-    }, [registerFunction, tenantId]);
-
-
-
-  // Keep agent voice in sync with selector
+  // Keep Voice Agent in sync with selector if new voice selectd
   useEffect(() => {
-    const next = { ...agent, voice };
+    const next = { ...agent, voice, instructions: SYSTEM_PROMPT, tools: coreTools }
     setAgentState(next);
     setAgent(next);
-    updateSession({ voice }); // push to live session if connected
+    updateSession({ voice, instructions: SYSTEM_PROMPT, tools: coreTools }); // push to live session if connected
   }, [voice]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Timer based on connection status
