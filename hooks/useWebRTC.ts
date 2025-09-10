@@ -91,20 +91,29 @@ export function useWebRTC(opts: UseWebRTCOptions): UseWebRTCReturn {
     opts.onServerEvent?.(ev);
   }, [opts, maxEvents]);
 
-  if (!clientRef.current) {
-    clientRef.current = new WebRTCClient({
-      model: opts.model ?? "gpt-4o-realtime-preview-2024-12-17",
-      voice: opts.defaultVoice ?? "alloy",
-      tokenProvider,
-      appendModelVoiceToUrl: opts.appendModelVoiceToUrl ?? true,
-      turnDetection: opts.turnDetection,
-      onStatus: setStatus,
-      onConversation: setConversation,
-      onVolume: setVolume,
-      onShowComponent: opts.onShowComponent,      
-      onServerEvent: handleServerEvent, // <-- buffer into `events`
-    });
-  }
+// hooks/useWebRTC.ts
+
+// ...
+
+if (!clientRef.current) {
+  clientRef.current = new WebRTCClient({
+    model: opts.model ?? "gpt-4o-realtime-preview-2024-12-17",
+    voice: opts.defaultVoice ?? "alloy",
+    tokenProvider,
+    appendModelVoiceToUrl: opts.appendModelVoiceToUrl ?? true,
+    turnDetection: opts.turnDetection,
+    onStatus: setStatus,
+    onConversation: setConversation,
+    onVolume: setVolume,
+    onShowComponent: opts.onShowComponent,
+    onServerEvent: handleServerEvent,
+  });
+
+  // 👇 expose a safe snapshot getter for the registry on window
+  // (requires the exposeRegistryToWindow() method to exist on webrtc)
+  clientRef.current.exposeRegistryToWindow(); // window.getToolRegistrySnapshot()
+}
+
 
   // keep callbacks fresh
   useEffect(() => {

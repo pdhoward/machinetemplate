@@ -207,9 +207,7 @@ const App: React.FC = () => {
           });
           return await r.json(); // expected { ok, data?/speak?/ui? }
         });
-    }, [registerFunction, toolsFunctions]); 
-
-    
+    }, [registerFunction, toolsFunctions]);     
 
   // Keep Voice Agent in sync with selector if new voice selectd
   useEffect(() => {

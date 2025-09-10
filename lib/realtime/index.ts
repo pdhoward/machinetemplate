@@ -93,7 +93,23 @@ export class WebRTCClient {
     };
   }
 
-  // ---------- Public getters ----------
+  // ---------- Public getters ----------  
+/** A read-only snapshot of the current registry (by value, not a live reference). */
+public getFunctionRegistrySnapshot(): Record<string, Function> {
+  // Avoid leaking the original object reference
+  return { ...this.functionRegistry };
+}
+
+/** a tiny bridge on window so the UI can fetch a snapshot easily. */
+public exposeRegistryToWindow(key: string = "getToolRegistrySnapshot") {
+  if (typeof window !== "undefined") {
+    // (a) function to fetch a snapshot
+    (window as any)[key] = () => this.getFunctionRegistrySnapshot();
+    // (b) optionally drop the instance itself for dev tooling
+    (window as any).realtime = this;
+  }
+}
+
   getStatus() { return this.status; }
   getConversation() { return [...this.conv]; } 
 
@@ -148,9 +164,18 @@ export class WebRTCClient {
 }
 
   // ---------- Register a local function (tool) ----------
-  registerFunction(name: string, fn: (args: any) => Promise<any> | any) {
-    this.functionRegistry[name] = fn;
+registerFunction(name: string, fn: (args: any) => Promise<any> | any) {
+  this.functionRegistry[name] = fn;
+
+  //  mirror to a global and notify UI pages
+  if (typeof window !== "undefined") {
+    const w = window as any;
+    w.__OPENAI_TOOL_REGISTRY = w.__OPENAI_TOOL_REGISTRY ?? {};
+    w.__OPENAI_TOOL_REGISTRY[name] = fn;
+    window.dispatchEvent(new CustomEvent("tool-registry-updated", { detail: { name } }));
   }
+}
+
   /*
    * Ask the model to call a specific tool right now (best-effort). 
    * Part of the self test check that can be executed by a user
