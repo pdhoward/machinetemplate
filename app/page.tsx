@@ -174,6 +174,8 @@ const App: React.FC = () => {
           })();
         }, [tenantId, registerFunction, updateSession]);
 
+        // optionally registered generic execute action - each individual action tool has been
+        // registered so not needed
         registerFunction("execute_action", async ({ action_id, input }: { action_id: string; input?: any }) => {
           const fn = (window as any)?.getToolRegistrySnapshot?.()?.[`action.${action_id}`];
           if (!fn) return { ok: false, error: `Unknown action: ${action_id}` };
