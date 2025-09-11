@@ -19,15 +19,8 @@ import { motion } from "framer-motion";
 import { useToolsFunctions } from "@/hooks/use-tools";
 import {Diagnostics} from "@/components/diagnostics"
 
-import { 
-  missingRequired, 
-  buildPromptFromMissing,
-  humanizeList,
-  runEffect,
+import { loadAndRegisterTenantActions } from "@/lib/agent/registerActions";
 
-} from "@/lib/agent/helper";
-
-import { ActionDoc } from "@/types/actions";
 import { useTenant } from "@/context/tenant-context";
 import type {ToolDef} from "@/types/tools"
 import { coreTools } from "@/types/tools";  // 
@@ -113,6 +106,8 @@ const App: React.FC = () => {
 
     // register the local set of tools once
     useEffect(() => {
+
+      console.log("[App] tools registration effect START");
       // localName (your hook keys) -> tool name in the model schema
       const nameMap: Record<string, string> = {
         timeFunction: "getCurrentTime",
@@ -128,77 +123,29 @@ const App: React.FC = () => {
       Object.entries(toolsFunctions).forEach(([localName, fn]) => {
         const toolName = nameMap[localName];
         if (toolName && typeof fn === "function") {
+          console.log("[App] registerFunction:", toolName, "from localName:", localName);
           registerFunction(toolName, fn);
+        } else {
+          console.log("[App] skip localName:", localName, "->", toolName, "fn type:", typeof fn);
         }
       });
 
        // register the visual helper tool
+       console.log("[App] registerFunction: show_component");
        registerFunction("show_component", async (args: any) => {
           // args can be { component_name, title?, description?, size?, props?, media?, url? }
           stageRef.current?.show(args);
           return { ok: true };
-      });
-        // data-driven executor (calls your actions from Mongo)
-       registerFunction("execute_action", async ({ action_id, input }) => {
-           const res = await fetch(`/api/actions/${tenantId}`, { cache: "no-store" });
-            if (!res.ok) {
-              console.error("Failed to fetch actions:", res.status);
-              return;
-            }
-            const actions: ActionDoc[] = await res.json();
-             registerFunction("execute_action", async ({ action_id, input }: { action_id: string; input?: any }) => {
-            const action = actions.find(a => a.actionId === action_id);
-            if (!action) {
-              return { ok: false, error: `Unknown action: ${action_id}` };
-            }
-
-            // Validate required inputs from the JSON Schema
-            const missing = missingRequired(action.inputSchema, input);
-            if (missing.length) {
-              const prompt = buildPromptFromMissing(missing);
-              return {
-                ok: false,
-                next: { missing, prompt },
-                speak: `I’ll need ${humanizeList(missing)}.`,
-              };
-            }
-
-        try {
-              // Execute the action (HTTP or local operation) via your helper
-              const result = await runEffect(action, input);
-
-              // Optional UI instructions (action default can be overridden by result.ui)
-              const ui = result?.ui ?? action.ui;
-              if (ui?.open) {
-                // normalize into your stage API
-                stageRef.current?.show({
-                  component_name: ui.open.component,
-                  ...(ui.open.props ?? {}),
-                  input,
-                  result,
-                });
-              }
-              if (ui?.close) {
-                stageRef.current?.hide?.();
-              }
-
-              // A short line the model can read aloud
-              const speak = result?.speak ?? action.speakTemplate ?? "Done.";
-              return { ok: true, data: result?.data, ui, speak };
-            } catch (err: any) {
-              return { ok: false, error: String(err?.message || err) };
-            }
-          });
-              
-        });
+      });       
 
         // list_things
+        console.log("[App] registerFunction: list_things");
         registerFunction("list_things", async ({ type }) => {
           const r = await fetch(`/api/things/${tenantId}?type=${type ?? ""}`, { cache: "no-store" });
           return { ok: true, data: await r.json() };
         });
 
-        // optional fallback: proxy to server reservations supervisor
+        // proxy to server reservations supervisor
         registerFunction("getReservations", async ({ relevantContextFromLastUserMessage }) => {
           const r = await fetch("/api/execute-tool", {
             method: "POST",
@@ -207,7 +154,38 @@ const App: React.FC = () => {
           });
           return await r.json(); // expected { ok, data?/speak?/ui? }
         });
-    }, [registerFunction, toolsFunctions]);     
+
+         // 🔥 Load actions from Mongo and register one tool per action
+        console.log("[App] registerFunction: execute_action ");
+
+        useEffect(() => {
+          if (!tenantId) return;
+
+          (async () => {
+            await loadAndRegisterTenantActions({
+              tenantId,
+              coreTools,
+              systemPrompt: SYSTEM_PROMPT,
+              registerFunction,   // from useWebRTC()
+              updateSession,      // from useWebRTC()
+              stageRef,           // for UI open/close in action handlers
+              maxTools: 80        // limit per openai is 128
+            });
+          })();
+        }, [tenantId, registerFunction, updateSession]);
+
+        registerFunction("execute_action", async ({ action_id, input }: { action_id: string; input?: any }) => {
+          const fn = (window as any)?.getToolRegistrySnapshot?.()?.[`action.${action_id}`];
+          if (!fn) return { ok: false, error: `Unknown action: ${action_id}` };
+          return await fn(input ?? {});
+        });
+
+
+        console.log("[App] tools registration effect END");
+
+    }, [registerFunction, toolsFunctions]);   
+    
+
 
   // Keep Voice Agent in sync with selector if new voice selectd
   useEffect(() => {

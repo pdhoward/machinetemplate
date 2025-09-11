@@ -107,6 +107,10 @@ public exposeRegistryToWindow(key: string = "getToolRegistrySnapshot") {
     (window as any)[key] = () => this.getFunctionRegistrySnapshot();
     // (b) optionally drop the instance itself for dev tooling
     (window as any).realtime = this;
+
+     // DEBUG
+    const now = this.getFunctionRegistrySnapshot();
+    console.log("[REALTIME WebRTCClient] exposeRegistryToWindow: installed", key, "keys:", Object.keys(now));
   }
 }
 
@@ -166,6 +170,9 @@ public exposeRegistryToWindow(key: string = "getToolRegistrySnapshot") {
   // ---------- Register a local function (tool) ----------
 registerFunction(name: string, fn: (args: any) => Promise<any> | any) {
   this.functionRegistry[name] = fn;
+
+  //  DEBUG
+  console.log("[WebRTCClient] registerFunction:", name, "registry size:", Object.keys(this.functionRegistry).length);
 
   //  mirror to a global and notify UI pages
   if (typeof window !== "undefined") {

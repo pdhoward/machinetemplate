@@ -109,11 +109,30 @@ if (!clientRef.current) {
     onServerEvent: handleServerEvent,
   });
 
-  // 👇 expose a safe snapshot getter for the registry on window
-  // (requires the exposeRegistryToWindow() method to exist on webrtc)
+   // DEBUG: Verify method exists
+  // @ts-ignore
+  console.log("[useWebRTC] client created. exposeRegistryToWindow? =", typeof clientRef.current.exposeRegistryToWindow);
+
+  // 👇 expose a safe snapshot getter for the registry on window 
   clientRef.current.exposeRegistryToWindow(); // window.getToolRegistrySnapshot()
+
+  // DEBUG: Verify it actually got wired to window
+  // @ts-ignore
+  console.log("[useWebRTC] window.getToolRegistrySnapshot exists? =", typeof window.getToolRegistrySnapshot);
 }
 
+// TEMP DEBUG BUTTON 
+  if (typeof window !== "undefined") {
+    // @ts-ignore
+    (window as any).__dumpToolSnapshot = () => {
+      // @ts-ignore
+      const snap = window.getToolRegistrySnapshot?.();
+      console.log("[useWebRTC] __dumpToolSnapshot:", snap ? Object.keys(snap) : snap);
+      return snap;
+    };
+  }
+
+  /////////////////////////////////////////////////////////////
 
   // keep callbacks fresh
   useEffect(() => {
