@@ -153,26 +153,7 @@ const App: React.FC = () => {
             body: JSON.stringify({ name: "getReservations", input: { relevantContextFromLastUserMessage } }),
           });
           return await r.json(); // expected { ok, data?/speak?/ui? }
-        });
-
-         // 🔥 Load actions from Mongo and register one tool per action
-        console.log("[App] registerFunction: execute_action ");
-
-        useEffect(() => {
-          if (!tenantId) return;
-
-          (async () => {
-            await loadAndRegisterTenantActions({
-              tenantId,
-              coreTools,
-              systemPrompt: SYSTEM_PROMPT,
-              registerFunction,   // from useWebRTC()
-              updateSession,      // from useWebRTC()
-              stageRef,           // for UI open/close in action handlers
-              maxTools: 80        // limit per openai is 128
-            });
-          })();
-        }, [tenantId, registerFunction, updateSession]);
+        });      
 
         // optionally registered generic execute action - each individual action tool has been
         // registered so not needed
@@ -186,6 +167,30 @@ const App: React.FC = () => {
         console.log("[App] tools registration effect END");
 
     }, [registerFunction, toolsFunctions]);   
+
+    // ✅ 2) Tenant-scoped action tools — separate top-level effect
+      useEffect(() => {
+        if (!tenantId) return;
+        console.log("[App] registerFunction: execute_action ");
+
+        (async () => {
+          await loadAndRegisterTenantActions({
+            tenantId,
+            coreTools,
+            systemPrompt: SYSTEM_PROMPT,
+            registerFunction,     // from useWebRTC
+            updateSession,        // from useWebRTC
+            stageRef,             // ok if your helper accepts StageRefLike; otherwise pass stage: stageRef.current
+            maxTools: 80,         // headroom under 128
+          });
+
+          // Let /registry refresh
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent("tool-registry-updated"));
+          }
+        })();
+      }, [tenantId, registerFunction, updateSession, stageRef]);
+
     
 
 

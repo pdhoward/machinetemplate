@@ -1,4 +1,3 @@
-// hooks/useWebRTC.ts
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useCallback } from "react";
@@ -55,7 +54,7 @@ export function useWebRTC(opts: UseWebRTCOptions): UseWebRTCReturn {
 
   const maxEvents = opts.maxEventBuffer ?? 500;
 
-  // token provider posts latest agent config to /api/session
+   // token provider posts latest agent config to /api/session
   const tokenProvider = useCallback(async () => {
     const agent = opts.getAgent?.() ?? {};
     const res = await fetch("/api/session", {
@@ -90,57 +89,55 @@ export function useWebRTC(opts: UseWebRTCOptions): UseWebRTCReturn {
     });
     opts.onServerEvent?.(ev);
   }, [opts, maxEvents]);
+  
+  if (!clientRef.current) {
+    clientRef.current = new WebRTCClient({
+      model: opts.model ?? "gpt-4o-realtime-preview-2024-12-17",
+      voice: opts.defaultVoice ?? "alloy",
+      tokenProvider,
+      appendModelVoiceToUrl: opts.appendModelVoiceToUrl ?? true,
+      turnDetection: opts.turnDetection,
+      onStatus: setStatus,
+      onConversation: setConversation,
+      onVolume: setVolume,
+      onShowComponent: opts.onShowComponent,
+      onServerEvent: handleServerEvent,
+    });
 
-// hooks/useWebRTC.ts
-
-// ...
-
-if (!clientRef.current) {
-  clientRef.current = new WebRTCClient({
-    model: opts.model ?? "gpt-4o-realtime-preview-2024-12-17",
-    voice: opts.defaultVoice ?? "alloy",
-    tokenProvider,
-    appendModelVoiceToUrl: opts.appendModelVoiceToUrl ?? true,
-    turnDetection: opts.turnDetection,
-    onStatus: setStatus,
-    onConversation: setConversation,
-    onVolume: setVolume,
-    onShowComponent: opts.onShowComponent,
-    onServerEvent: handleServerEvent,
-  });
-
-   // DEBUG: Verify method exists
-  // @ts-ignore
-  console.log("[useWebRTC] client created. exposeRegistryToWindow? =", typeof clientRef.current.exposeRegistryToWindow);
-
-  // 👇 expose a safe snapshot getter for the registry on window 
-  clientRef.current.exposeRegistryToWindow(); // window.getToolRegistrySnapshot()
-
-  // DEBUG: Verify it actually got wired to window
-  // @ts-ignore
-  console.log("[useWebRTC] window.getToolRegistrySnapshot exists? =", typeof window.getToolRegistrySnapshot);
-}
-
-// TEMP DEBUG BUTTON 
-  if (typeof window !== "undefined") {
+    // Debug (safe): does the method exist?
+    // DO NOT touch `window` here.
     // @ts-ignore
-    (window as any).__dumpToolSnapshot = () => {
-      // @ts-ignore
-      const snap = window.getToolRegistrySnapshot?.();
-      console.log("[useWebRTC] __dumpToolSnapshot:", snap ? Object.keys(snap) : snap);
-      return snap;
-    };
+    console.log("[useWebRTC] client created. exposeRegistryToWindow? =", typeof clientRef.current.exposeRegistryToWindow);
+
+    // Safe to call; it internally guards `window`
+    clientRef.current.exposeRegistryToWindow();
   }
 
-  /////////////////////////////////////////////////////////////
-
-  // keep callbacks fresh
+  // Keep callbacks fresh (ALWAYS top-level; never conditional)
   useEffect(() => {
     clientRef.current?.setCallbacks({
-      onShowComponent: opts.onShowComponent,      
+      onShowComponent: opts.onShowComponent,
       onServerEvent: handleServerEvent,
     });
   }, [opts.onShowComponent, handleServerEvent]);
+
+  // ---------- Put ALL window access inside an effect ----------
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      // @ts-ignore
+      console.log("[useWebRTC] window.getToolRegistrySnapshot exists? =", typeof window.getToolRegistrySnapshot);
+
+      // Optional debug helper
+      (window as any).__dumpToolSnapshot = () => {
+        // @ts-ignore
+        const snap = window.getToolRegistrySnapshot?.();
+        console.log("[useWebRTC] __dumpToolSnapshot:", snap ? Object.keys(snap) : snap);
+        return snap;
+      };
+    } else {
+      console.log("[useWebRTC] window not available yet (SSR)");
+    }
+  }, []); // run once after mount
 
   const api = useMemo(() => {
     const c = clientRef.current!;
@@ -154,14 +151,12 @@ if (!clientRef.current) {
       setAgent: (a: AgentConfigInput) => c.setAgent(a),
       updateSession: (p: Partial<AgentConfigInput>) => c.updateSession(p),
       registerFunction: (name: string, fn: (args: any) => Promise<any> | any) => c.registerFunction(name, fn),
-      
       setMicEnabled: (enabled: boolean) => c.setMicEnabled(enabled),
       isMicEnabled: () => c.isMicEnabled(),
       getClient: () => c,
-       
-      forceToolCall: (name: string, args: any, sayAfter?: string) => c.forceToolCall(name, args, sayAfter)
+      forceToolCall: (name: string, args?: any, sayAfter?: string) => c.forceToolCall(name, args, sayAfter),
     };
   }, []);
-  
+
   return { status, conversation, volume, events, ...api };
 }
