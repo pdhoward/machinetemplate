@@ -1,6 +1,6 @@
 // /lib/types/things.ts
 export type ThingDoc = {
-  _id: string;
+  id: string;
   tenantId: string;
   type: "unit"|"policy"|"restaurant"|"spa_treatment"|"media";
   name: string;

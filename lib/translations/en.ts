@@ -93,7 +93,7 @@ export const en = {
         },
         switchTheme: "Theme switched to ",
         themeFailed: "Failed to switch theme",
-        time: "Announce to user: The current time is ",
+        time: "Announce to user: The current time and date is ",
         scrapeWebsite: {
             success: "Website content extracted successfully",
             description: "Failed to scrape website content",

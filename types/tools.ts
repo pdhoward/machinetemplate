@@ -43,19 +43,22 @@ export const coreTools: ToolDef[] = [
     },
   },
 
-  // reader for catalog-like items
+  // reader for catalog-like items 
   {
     type: "function",
     name: "list_things",
-    description: "Browse available 'things' (units, spa_treatment, media...).",
+    description: "Browse available 'things' with optional filtering and search.",
     parameters: {
       type: "object",
       properties: {
-        type: { type: "string", description: "Optional filter (e.g., 'unit')" },
+        type: { type: "string", description: "Filter by thing type (e.g., 'unit', 'spa_treatment')." },
+        q:    { type: "string", description: "Free-text search in name/title/description/tags." },
+        limit:{ type: "number", description: "Max results (default 100, max 500)." }
       },
-      additionalProperties: false,
+      additionalProperties: false
     },
   },
+
 
   // optional fallback: let the model call your server supervisor
   {

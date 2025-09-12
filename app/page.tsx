@@ -24,6 +24,9 @@ import { loadAndRegisterTenantActions } from "@/lib/agent/registerActions";
 import { useTenant } from "@/context/tenant-context";
 import type {ToolDef} from "@/types/tools"
 import { coreTools } from "@/types/tools";  // 
+
+import { ThingArraySchema } from "@/types/things.schema";
+import { toThingView } from "@/lib/things/view";
  
 
 // --- tool schema you expose to the model ---
@@ -43,7 +46,8 @@ const defaultTools: ToolDef[] = [
 
 const SYSTEM_PROMPT = `
 You are the Cypress Resorts agent. Prefer the tool execute_action to perform tasks using action_id and input.
-Use list_things to browse items (type: "unit", "spa_treatment", "media").
+Use simple tools like time background, party, launchWebsite, copy to clipboard or scrape web site (which may also be referred to as fetch website site data) to be of assistance to a guest
+Use list_things to browse items (type: "unit", "spa_treatment", "media", "restaurants", or other items).
 Use show_component when you need to display UI (e.g., "payment", "menu", "room").
 If you cannot complete a request with execute_action, you may call getReservations.
 Keep replies short, warm, professional. Ask for missing required fields only.
@@ -140,10 +144,34 @@ const App: React.FC = () => {
 
         // list_things
         console.log("[App] registerFunction: list_things");
-        registerFunction("list_things", async ({ type }) => {
-          const r = await fetch(`/api/things/${tenantId}?type=${type ?? ""}`, { cache: "no-store" });
-          return { ok: true, data: await r.json() };
-        });
+        registerFunction("list_things", async ({ type, q, limit }: { type?: string; q?: string; limit?: number }) => {
+            const params = new URLSearchParams();
+            if (type) params.set("type", type);
+            if (q) params.set("q", q);
+            if (limit) params.set("limit", String(limit));
+
+            const r = await fetch(`/api/things/${tenantId}?${params.toString()}`, { cache: "no-store" });
+            if (!r.ok) {
+              return { ok: false, error: `HTTP ${r.status}` };
+            }
+
+            const json = await r.json();
+
+            // Validate on the client (optional but nice)
+            const parse = ThingArraySchema.safeParse(json);
+            if (!parse.success) {
+              console.warn("[list_things] schema mismatch:", parse.error.issues);
+              // still return raw if you prefer:
+              return { ok: true, data: json };
+            }
+
+            // Option A: return raw docs (model can “speak” any field)
+            // return { ok: true, data: parse.data };
+
+            // Option B: return normalized views so the model/UI has a predictable shape
+            const views = parse.data.map(toThingView);
+            return { ok: true, data: views };
+          });
 
         // proxy to server reservations supervisor
         registerFunction("getReservations", async ({ relevantContextFromLastUserMessage }) => {
@@ -163,33 +191,32 @@ const App: React.FC = () => {
           return await fn(input ?? {});
         });
 
-
-        console.log("[App] tools registration effect END");
+        console.log("[App] CORE tools registration effect END");
 
     }, [registerFunction, toolsFunctions]);   
 
     // ✅ 2) Tenant-scoped action tools — separate top-level effect
-      useEffect(() => {
-        if (!tenantId) return;
-        console.log("[App] registerFunction: execute_action ");
+      // useEffect(() => {
+      //   if (!tenantId) return;
+      //   console.log("[App] registerFunction: execute_action ");
 
-        (async () => {
-          await loadAndRegisterTenantActions({
-            tenantId,
-            coreTools,
-            systemPrompt: SYSTEM_PROMPT,
-            registerFunction,     // from useWebRTC
-            updateSession,        // from useWebRTC
-            stageRef,             // ok if your helper accepts StageRefLike; otherwise pass stage: stageRef.current
-            maxTools: 80,         // headroom under 128
-          });
+      //   (async () => {
+      //     await loadAndRegisterTenantActions({
+      //       tenantId,
+      //       coreTools,
+      //       systemPrompt: SYSTEM_PROMPT,
+      //       registerFunction,     // from useWebRTC
+      //       updateSession,        // from useWebRTC
+      //       stageRef,             // ok if your helper accepts StageRefLike; otherwise pass stage: stageRef.current
+      //       maxTools: 80,         // headroom under 128
+      //     });
 
-          // Let /registry refresh
-          if (typeof window !== "undefined") {
-            window.dispatchEvent(new CustomEvent("tool-registry-updated"));
-          }
-        })();
-      }, [tenantId, registerFunction, updateSession, stageRef]);
+      //     // Let /registry refresh
+      //     if (typeof window !== "undefined") {
+      //       window.dispatchEvent(new CustomEvent("tool-registry-updated"));
+      //     }
+      //   })();
+      // }, [tenantId, registerFunction, updateSession, stageRef]);
 
     
 
