@@ -1,82 +1,22 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-
-declare global {
-  interface Window {
-    getToolRegistrySnapshot?: () => Record<string, Function> | undefined;
-    __OPENAI_TOOL_REGISTRY?: Record<string, Function>;
-    realtime?: {
-      getFunctionRegistrySnapshot?: () => Record<string, Function>;
-    };
-  }
-}
-
-type ToolEntry = { name: string; fn: Function; source: string };
+import React, { useMemo, useState } from 'react';
+import { useToolRegistry } from '@/context/registry-context';
 
 export default function RegistryPage() {
-  const [tools, setTools] = useState<ToolEntry[]>([]);
+  const { entries, refresh, sourceStatus, stats, isLoading } = useToolRegistry();
   const [query, setQuery] = useState('');
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [copied, setCopied] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [lastLoadedAt, setLastLoadedAt] = useState<Date | null>(null);
-
-  const readSnapshot = useCallback((): Record<string, Function> | null => {
-    try {
-      // 1) Preferred: explicit getter exposed by the client
-      if (typeof window.getToolRegistrySnapshot === 'function') {
-        const snap = window.getToolRegistrySnapshot();
-        if (snap) return snap;
-      }
-      // 2) Instance method on your realtime client (if surfaced)
-      if (window.realtime?.getFunctionRegistrySnapshot) {
-        return window.realtime.getFunctionRegistrySnapshot();
-      }
-      // 3) Global mirror (from registerFunction)
-      if (window.__OPENAI_TOOL_REGISTRY) {
-        return { ...window.__OPENAI_TOOL_REGISTRY };
-      }
-      return null;
-    } catch (e: any) {
-      setError(e?.message ?? String(e));
-      return null;
-    }
-  }, []);
-
-  const load = useCallback(() => {
-    setError(null);
-    const snap = readSnapshot();
-    if (!snap) {
-      setTools([]);
-      setError(
-        'No registry found. Make sure to call client.exposeRegistryToWindow() or mirror __OPENAI_TOOL_REGISTRY.'
-      );
-      setLastLoadedAt(new Date());
-      return;
-    }
-    const entries = Object.entries(snap)
-      .map(([name, fn]) => ({ name, fn, source: safeToString(fn) }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-    setTools(entries);
-    setLastLoadedAt(new Date());
-  }, [readSnapshot]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  useEffect(() => {
-    const handler = () => load();
-    window.addEventListener('tool-registry-updated', handler);
-    return () => window.removeEventListener('tool-registry-updated', handler);
-  }, [load]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return tools;
-    return tools.filter(t => t.name.toLowerCase().includes(q) || t.source.toLowerCase().includes(q));
-  }, [query, tools]);
+    if (!q) return entries;
+    return entries.filter(t =>
+      t.name.toLowerCase().includes(q) ||
+      safeToString(t.fn).toLowerCase().includes(q)
+    );
+  }, [query, entries]);
 
   const toggle = (name: string) =>
     setExpanded(prev => ({ ...prev, [name]: !prev[name] }));
@@ -86,8 +26,10 @@ export default function RegistryPage() {
       await navigator.clipboard.writeText(text);
       setCopied(name);
       setTimeout(() => setCopied(null), 1200);
-    } catch {/* ignore */}
+    } catch {}
   };
+
+  const total = entries.length;
 
   return (
     <div className="min-h-screen w-full bg-neutral-950 text-neutral-100">
@@ -101,7 +43,7 @@ export default function RegistryPage() {
           </div>
           <div className="flex gap-2">
             <button
-              onClick={load}
+              onClick={() => refresh('button')}
               className="rounded-xl bg-neutral-800 hover:bg-neutral-700 transition px-4 py-2 text-sm border border-neutral-700"
             >
               Refresh
@@ -127,15 +69,19 @@ export default function RegistryPage() {
             )}
           </div>
           <div className="text-xs text-neutral-500">
-            {lastLoadedAt ? <>Last loaded {lastLoadedAt.toLocaleTimeString()}</> : <>Not loaded yet</>}
+            {stats.lastLoadedAt
+              ? <>Last loaded {stats.lastLoadedAt.toLocaleTimeString()} ({stats.lastReason})</>
+              : <>Not loaded yet</>}
+            {isLoading && <span className="ml-2 text-amber-400">loading…</span>}
           </div>
         </section>
 
-        {error && (
-          <div className="mt-4 rounded-xl border border-rose-900 bg-rose-950/30 text-rose-200 px-4 py-3 text-sm">
-            {error}
-          </div>
-        )}
+        {/* Source health */}
+        <div className="mt-3 grid grid-cols-3 gap-3 text-xs">
+          <HealthCard title="Getter" status={sourceStatus.getter} />
+          <HealthCard title="Realtime" status={sourceStatus.realtime} />
+          <HealthCard title="Global" status={sourceStatus.global} />
+        </div>
 
         <div className="mt-6 overflow-hidden rounded-2xl border border-neutral-800 bg-neutral-900/40">
           <div className="grid grid-cols-12 border-b border-neutral-800 bg-neutral-900/60">
@@ -146,11 +92,12 @@ export default function RegistryPage() {
 
           {filtered.length === 0 ? (
             <div className="px-4 py-10 text-sm text-neutral-400">
-              {tools.length === 0 ? 'No tools found in the registry.' : 'No results match your search.'}
+              {total === 0 ? 'No tools found in the registry.' : 'No results match your search.'}
             </div>
           ) : (
             filtered.map(t => {
               const isOpen = !!expanded[t.name];
+              const src = safeToString(t.fn);
               return (
                 <div key={t.name} className="grid grid-cols-12 border-b border-neutral-800/60 hover:bg-neutral-900/30 transition">
                   <div className="col-span-4 px-4 py-3 flex items-center gap-2">
@@ -162,14 +109,14 @@ export default function RegistryPage() {
 
                   <div className="col-span-6 px-4 py-3">
                     <pre className="max-h-24 overflow-hidden text-[11.5px] leading-relaxed whitespace-pre-wrap text-neutral-300">
-{firstNonEmptyLine(t.source) || '// no source available'}
+{firstNonEmptyLine(src) || '// no source available'}
                     </pre>
 
                     {isOpen && (
                       <div className="mt-3 rounded-xl border border-neutral-800 bg-neutral-950">
                         <div className="px-3 py-2 border-b border-neutral-800 text-xs text-neutral-400">Full source</div>
                         <pre className="p-3 text-[12px] leading-relaxed overflow-auto">
-{t.source}
+{src}
                         </pre>
                       </div>
                     )}
@@ -183,10 +130,10 @@ export default function RegistryPage() {
                       {isOpen ? 'Hide code' : 'View code'}
                     </button>
                     <button
-                      onClick={() => copy(t.name, t.source)}
+                      onClick={() => copy(t.name, src)}
                       className="rounded-lg bg-neutral-800 hover:bg-neutral-700 transition px-3 py-1.5 text-xs border border-neutral-700"
                     >
-                      {copied === t.name ? 'Copied!' : 'Copy'}
+                      Copy
                     </button>
                   </div>
                 </div>
@@ -197,21 +144,34 @@ export default function RegistryPage() {
 
         <div className="mt-4 text-xs text-neutral-500">
           Showing {filtered.length} {filtered.length === 1 ? 'tool' : 'tools'}
-          {filtered.length !== tools.length && <> (of {tools.length})</>}
+          {filtered.length !== total && <> (of {total})</>}
         </div>
       </div>
     </div>
   );
 }
 
-function safeToString(fn: Function): string {
-  try {
-    return fn.toString();
-  } catch {
-    return '// source unavailable';
-  }
+function HealthCard({ title, status }: { title: string; status: { available: boolean; keys: string[] } }) {
+  return (
+    <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-3">
+      <div className="text-xs text-neutral-400">{title}</div>
+      <div className="mt-1 text-sm text-neutral-200">
+        {status.available ? (
+          <span className="text-emerald-400">available</span>
+        ) : (
+          <span className="text-rose-400">not available</span>
+        )}
+      </div>
+      <div className="mt-1 text-[11px] text-neutral-500 truncate">
+        keys: {status.keys.length ? status.keys.join(', ') : '—'}
+      </div>
+    </div>
+  );
 }
 
+function safeToString(fn: Function): string {
+  try { return fn.toString(); } catch { return '// source unavailable'; }
+}
 function firstNonEmptyLine(src: string): string {
   for (const raw of src.split('\n')) {
     const line = raw.trim();

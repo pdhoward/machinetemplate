@@ -196,27 +196,27 @@ const App: React.FC = () => {
     }, [registerFunction, toolsFunctions]);   
 
     // ✅ 2) Tenant-scoped action tools — separate top-level effect
-      // useEffect(() => {
-      //   if (!tenantId) return;
-      //   console.log("[App] registerFunction: execute_action ");
+      useEffect(() => {
+        if (!tenantId) return;
+        console.log("[App] registerFunction: execute_action ");
 
-      //   (async () => {
-      //     await loadAndRegisterTenantActions({
-      //       tenantId,
-      //       coreTools,
-      //       systemPrompt: SYSTEM_PROMPT,
-      //       registerFunction,     // from useWebRTC
-      //       updateSession,        // from useWebRTC
-      //       stageRef,             // ok if your helper accepts StageRefLike; otherwise pass stage: stageRef.current
-      //       maxTools: 80,         // headroom under 128
-      //     });
+        (async () => {
+          await loadAndRegisterTenantActions({
+            tenantId,
+            coreTools,
+            systemPrompt: SYSTEM_PROMPT,
+            registerFunction,     // from useWebRTC
+            updateSession,        // from useWebRTC
+            stageRef,             // ok if your helper accepts StageRefLike; otherwise pass stage: stageRef.current
+            maxTools: 80,         // headroom under 128
+          });
 
-      //     // Let /registry refresh
-      //     if (typeof window !== "undefined") {
-      //       window.dispatchEvent(new CustomEvent("tool-registry-updated"));
-      //     }
-      //   })();
-      // }, [tenantId, registerFunction, updateSession, stageRef]);
+          // Let /registry refresh
+          if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent("tool-registry-updated"));
+          }
+        })();
+      }, [tenantId, registerFunction, updateSession, stageRef]);
 
     
 
@@ -241,6 +241,16 @@ const App: React.FC = () => {
       if (id) clearInterval(id);
     };
   }, [status]);
+
+  // this exposes the existing webrtc client when mounts
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const c = getClient();
+    (window as any).realtime = c;
+    (window as any).getToolRegistrySnapshot = () => c.getFunctionRegistrySnapshot?.();
+    (window as any).__OPENAI_TOOL_REGISTRY = (window as any).__OPENAI_TOOL_REGISTRY ?? {};
+  }, [getClient]);
+
 
   const isConnected = status === "CONNECTED";
 

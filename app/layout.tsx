@@ -9,6 +9,7 @@ import { siteConfig } from "@/config/site";
 import { Toaster } from "@/components/ui/sonner";
 import { Analytics } from "@vercel/analytics/react";
 import Providers from "./providers";
+import ToolRegistryPanel from '@/components/ToolRegistryPanel';
 import Banner from "@/components/banner"; // default export above
 
 const geistSans = Geist({
@@ -58,6 +59,7 @@ export default function RootLayout({
             </div>
 
             <Toaster />
+            <ToolRegistryPanel />
           </Providers>
         </ThemeProvider>
         <Analytics />

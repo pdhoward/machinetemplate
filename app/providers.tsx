@@ -4,6 +4,7 @@
 import React from "react";
 import { TenantProvider } from "@/context/tenant-context";
 import { TranslationsProvider } from "@/context/translations-context";
+import { ToolRegistryProvider } from "@/context/registry-context";
 
 type Props = {
   children: React.ReactNode;
@@ -12,7 +13,11 @@ type Props = {
 export default function Providers({ children }: Props) {
   return (
     <TenantProvider>
-      <TranslationsProvider>{children}</TranslationsProvider>
+      <ToolRegistryProvider >
+        <TranslationsProvider>
+          {children}
+        </TranslationsProvider>
+      </ToolRegistryProvider >
     </TenantProvider>
   );
 }
