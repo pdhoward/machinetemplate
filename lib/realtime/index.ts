@@ -1,4 +1,4 @@
-// lib/realtime/WebRTCClient.ts
+// lib/realtime
 // A tiny, focused wrapper around native WebRTC for OpenAI Realtime.
 // No React here. Pure browser APIs + typed callbacks.
 
@@ -169,10 +169,12 @@ public exposeRegistryToWindow(key: string = "getToolRegistrySnapshot") {
 
   // ---------- Register a local function (tool) ----------
 registerFunction(name: string, fn: (args: any) => Promise<any> | any) {
+  const existed = !!this.functionRegistry[name];
   this.functionRegistry[name] = fn;
 
-  //  DEBUG
-  console.log("[WebRTCClient] registerFunction:", name, "registry size:", Object.keys(this.functionRegistry).length);
+    // DEBUG
+    console.log("[WebRTCClient] registerFunction:", name,
+      "existed?", existed, "size:", Object.keys(this.functionRegistry).length);
 
   //  mirror to a global and notify UI pages
   if (typeof window !== "undefined") {
@@ -182,6 +184,53 @@ registerFunction(name: string, fn: (args: any) => Promise<any> | any) {
     window.dispatchEvent(new CustomEvent("tool-registry-updated", { detail: { name } }));
   }
 }
+
+ /** True if a function name exists. */
+  public hasFunction(name: string): boolean {
+    return Object.prototype.hasOwnProperty.call(this.functionRegistry, name);
+  }
+
+  /** List all registered function names. */
+  public listFunctionNames(): string[] {
+    return Object.keys(this.functionRegistry);
+  }
+
+   /**
+   * Remove a function by name. Returns true if removed.
+   * Also updates the window mirror and notifies listeners.
+   */
+  public unregisterFunction(name: string): boolean {
+    const existed = this.hasFunction(name);
+    if (!existed) return false;
+
+    delete this.functionRegistry[name];
+
+    if (typeof window !== "undefined") {
+      const w = window as any;
+      if (w.__OPENAI_TOOL_REGISTRY && w.__OPENAI_TOOL_REGISTRY[name]) {
+        delete w.__OPENAI_TOOL_REGISTRY[name];
+      }
+      window.dispatchEvent(new CustomEvent("tool-registry-updated", { detail: { name, op: "unregister" } }));
+    }
+
+    console.log("[WebRTCClient] unregisterFunction:", name,
+      "size:", Object.keys(this.functionRegistry).length);
+
+    return true;
+  }
+
+   /**
+   * Bulk remove by prefix (e.g., "action."). Returns count removed.
+   * Optionally provide a whitelist to keep some names.
+   */
+  public unregisterFunctionsByPrefix(prefix: string, keep: string[] = []): number {
+    const keepSet = new Set(keep);
+    const toRemove = this.listFunctionNames()
+      .filter(n => n.startsWith(prefix) && !keepSet.has(n));
+    toRemove.forEach(n => this.unregisterFunction(n));
+    return toRemove.length;
+  }
+ 
 
   /*
    * Ask the model to call a specific tool right now (best-effort). 

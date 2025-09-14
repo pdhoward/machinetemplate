@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { tools as builtinTools } from "@/lib/basictools";
-import { useWebRTC } from "@/hooks/useWebRTC";
+import { useRealtime } from '@/context/realtime-context';
+//import { useWebRTC } from "@/hooks/useWebRTC";
 import Visualizer from "@/components/visualizer";
 import VisualStageHost, { VisualStageHandle } from "@/components/visual-stage-host";
 import ControlsBar from "@/components/control-bar";
@@ -74,43 +75,94 @@ const App: React.FC = () => {
     tools: coreTools,
   });
 
-   const { tenantId } = useTenant();  
-
+   const { tenantId } = useTenant();
   // anchor for the visualizer card
   const messagesEndRef = useRef<HTMLDivElement>(null);
   // anchor for the visual components
   const stageRef = useRef<VisualStageHandle>(null)
 
+ /*
+  Wrap the stageRef with a stable function and use that in Registering 
+  Tenant scoped actions
+ */
+  const showOnStage = useCallback((args: any) => {
+    stageRef.current?.show?.(args);
+  }, []);
+
+  const hideStage = useCallback(() => {
+  stageRef.current?.hide?.();
+}, []);
+
   const {
-    status,
-    conversation,
-    volume,
-    events, // raw server events (for logs + analytics)
-    connect,
-    disconnect,
-    sendText,
-    pttDown,
+    status, 
+    conversation, 
+    volume, 
+    events,
+    connect, 
+    disconnect, 
+    sendText, 
+    pttDown, 
     pttUp,
-    setAgent,
-    updateSession,
-    registerFunction,
-    setMicEnabled,     // from hook (tiny wrapper to client.setMicEnabled)
-    isMicEnabled,      // from hook (tiny wrapper to client.isMicEnabled)
+    setAgent, 
+    updateSession, 
+    registerFunction,    
+    unregisterFunctionsByPrefix,   // clear out functions when new tenant detected
+    setMicEnabled,
+    forceToolCall,
+    setCallbacks, 
     getClient,
-    forceToolCall
-  } = useWebRTC({    
-    model: "gpt-realtime",
-    defaultVoice: "alloy",
-    appendModelVoiceToUrl: true, // set false for server-only config
-    getAgent: () => agent,
-    onShowComponent: (name) =>  {
-      stageRef.current?.show({ component_name: name });  
-    }  
-  });  
+  } = useRealtime();
+
+  // const {
+  //   status,
+  //   conversation,
+  //   volume,
+  //   events, // raw server events (for logs + analytics)
+  //   connect,
+  //   disconnect,
+  //   sendText,
+  //   pttDown,
+  //   pttUp,
+  //   setAgent,
+  //   updateSession,
+  //   registerFunction,
+  //   setMicEnabled,     // from hook (tiny wrapper to client.setMicEnabled)
+  //   isMicEnabled,      // from hook (tiny wrapper to client.isMicEnabled)
+  //   getClient,
+  //   forceToolCall
+  // } = useWebRTC({    
+  //   model: "gpt-realtime",
+  //   defaultVoice: "alloy",
+  //   appendModelVoiceToUrl: true, // set false for server-only config
+  //   getAgent: () => agent,
+  //   onShowComponent: (name) =>  {
+  //     stageRef.current?.show({ component_name: name });  
+  //   }  
+  // }); 
+  
+   // Bind callbacks that depend on local refs/state
+  useEffect(() => {
+    setCallbacks({
+      onShowComponent: (name: string) => {
+        stageRef.current?.show?.({ component_name: name });
+      },
+    });
+  }, [setCallbacks]);
+
+  // Push initial agent config (and whenever it changes)
+  useEffect(() => {
+    const agent = {
+      name: 'Cypress Resorts',
+      voice,
+      instructions: SYSTEM_PROMPT,
+      tools: coreTools,
+    };
+    setAgent(agent);
+    updateSession(agent); // safe; pushes to live session if connected
+  }, [voice, setAgent, updateSession]);
 
     // register the local set of tools once
     useEffect(() => {
-
       console.log("[App] tools registration effect START");
       // localName (your hook keys) -> tool name in the model schema
       const nameMap: Record<string, string> = {
@@ -192,10 +244,10 @@ const App: React.FC = () => {
         });
 
         console.log("[App] CORE tools registration effect END");
+         // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);   
 
-    }, [registerFunction, toolsFunctions]);   
-
-    // ✅ 2) Tenant-scoped action tools — separate top-level effect
+    // ✅ 2) Tenant-scoped action tools loaed with change in Tenant
       useEffect(() => {
         if (!tenantId) return;
         console.log("[App] registerFunction: execute_action ");
@@ -207,8 +259,14 @@ const App: React.FC = () => {
             systemPrompt: SYSTEM_PROMPT,
             registerFunction,     // from useWebRTC
             updateSession,        // from useWebRTC
-            stageRef,             // ok if your helper accepts StageRefLike; otherwise pass stage: stageRef.current
+            showOnStage,          // 👈 passing a stable function, rather than stageRef
+            hideStage,            // 👈 optional
             maxTools: 80,         // headroom under 128
+            preclear: {
+            prefix: "action.",
+            unregisterByPrefix: (prefix, keep) => unregisterFunctionsByPrefix(prefix, keep),
+            // keep: ['action.shared_healthcheck'] // if you want to keep some
+          },
           });
 
           // Let /registry refresh
@@ -216,18 +274,16 @@ const App: React.FC = () => {
             window.dispatchEvent(new CustomEvent("tool-registry-updated"));
           }
         })();
-      }, [tenantId, registerFunction, updateSession, stageRef]);
-
-    
+      }, [tenantId, registerFunction, updateSession, showOnStage, hideStage, unregisterFunctionsByPrefix]);
 
 
   // Keep Voice Agent in sync with selector if new voice selectd
-  useEffect(() => {
-    const next = { ...agent, voice, instructions: SYSTEM_PROMPT, tools: coreTools }
-    setAgentState(next);
-    setAgent(next);
-    updateSession({ voice, instructions: SYSTEM_PROMPT, tools: coreTools }); // push to live session if connected
-  }, [voice]); // eslint-disable-line react-hooks/exhaustive-deps
+  // useEffect(() => {
+  //   const next = { ...agent, voice, instructions: SYSTEM_PROMPT, tools: coreTools }
+  //   setAgentState(next);
+  //   setAgent(next);
+  //   updateSession({ voice, instructions: SYSTEM_PROMPT, tools: coreTools }); // push to live session if connected
+  // }, [voice]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Timer based on connection status
   useEffect(() => {
@@ -243,13 +299,13 @@ const App: React.FC = () => {
   }, [status]);
 
   // this exposes the existing webrtc client when mounts
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const c = getClient();
-    (window as any).realtime = c;
-    (window as any).getToolRegistrySnapshot = () => c.getFunctionRegistrySnapshot?.();
-    (window as any).__OPENAI_TOOL_REGISTRY = (window as any).__OPENAI_TOOL_REGISTRY ?? {};
-  }, [getClient]);
+  // useEffect(() => {
+  //   if (typeof window === 'undefined') return;
+  //   const c = getClient();
+  //   (window as any).realtime = c;
+  //   (window as any).getToolRegistrySnapshot = () => c.getFunctionRegistrySnapshot?.();
+  //   (window as any).__OPENAI_TOOL_REGISTRY = (window as any).__OPENAI_TOOL_REGISTRY ?? {};
+  // }, [getClient]);
 
 
   const isConnected = status === "CONNECTED";

@@ -1,27 +1,38 @@
 // lib/agent/registerTenantActions.ts
-import type { RefObject } from "react";
 import type { ToolDef } from "@/types/tools";
 import type { ActionDoc } from "@/types/actions";
-import { missingRequired, buildPromptFromMissing, humanizeList, runEffect } from "@/lib/agent/helper";
+import {
+  missingRequired,
+  buildPromptFromMissing,
+  humanizeList,
+  runEffect,
+} from "@/lib/agent/helper";
 
-
-type StageLike = { show?: (args:any) => void; hide?: () => void };
-// match your VisualStageHandle surface
-type StageHandle = { show?: (args: any) => void; hide?: () => void };
-// Accept either a real RefObject or any { current?: ... } holder, and allow null/undefined
-type StageRefLike =
-  | React.RefObject<StageLike | null | undefined>
-  | { current?: StageLike | null | undefined };
-
+/**
+ * Register tenant-scoped "action.*" tools and expose them to the model.
+ * - Fetches actions for a tenant
+ * - Optionally caps how many tools to expose (stay under the 128 tool ceiling)
+ * - Registers one local handler per action: `action.<actionId>`
+ * - Updates the session tools: [coreTools, ...actionTools]
+ * - Uses `showOnStage` / `hideStage` callbacks for UI open/close hints
+ */
 export async function loadAndRegisterTenantActions(opts: {
   tenantId: string;
   coreTools: ToolDef[];
   systemPrompt: string;
   registerFunction: (name: string, fn: (args: any) => Promise<any>) => void;
   updateSession: (p: { tools?: ToolDef[]; instructions?: string }) => void;
- stageRef?: StageRefLike;     // ✅ widened
-  // optional: limit how many action tools you expose at once
-  maxTools?: number; // defaults to unlimited; set to e.g. 80 if you want headroom under 128
+  preclear?: {
+    /** Remove all tools whose name starts with this prefix (e.g., "action.") */
+    prefix: string;
+    /** Keep these even if they match the prefix (optional) */
+    keep?: string[];
+    /** Hook to perform the actual unregister (from context); if omitted, skip preclear */
+    unregisterByPrefix?: (prefix: string, keep?: string[]) => number;
+  };
+  showOnStage?: (args: any) => void;   // e.g., ({ component_name, ...props })
+  hideStage?: () => void;              // optional
+  maxTools?: number;                   // e.g., 80 to keep headroom under 128
 }) {
   const {
     tenantId,
@@ -29,10 +40,25 @@ export async function loadAndRegisterTenantActions(opts: {
     systemPrompt,
     registerFunction,
     updateSession,
-    stageRef,
+    preclear,
+    showOnStage,
+    hideStage,
     maxTools,
   } = opts;
 
+   // --------- A) Preclear "action.*" from client + model tools (optional) ----------
+  if (preclear?.unregisterByPrefix && preclear.prefix) {
+    const removed = preclear.unregisterByPrefix(preclear.prefix, preclear.keep ?? []);
+    if (removed > 0) {
+      console.log("[Actions] Precleared", removed, `tool(s) with prefix "${preclear.prefix}"`);
+      // Make sure the model tool schema is also reset to core-only before adding new
+      updateSession({ tools: [...coreTools], instructions: systemPrompt });
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("tool-registry-updated", { detail: { op: "preclear", count: removed } }));
+      }
+    }
+  }
+  // --------- B) Fetch new actions ----------
   console.log("[Actions] Fetching actions for tenant:", tenantId);
   const res = await fetch(`/api/actions/${tenantId}`, { cache: "no-store" });
   if (!res.ok) {
@@ -40,18 +66,32 @@ export async function loadAndRegisterTenantActions(opts: {
     return;
   }
 
-  const actions: ActionDoc[] = await res.json();
-  console.log("[Actions] Loaded", actions.length, "action(s):", actions.map(a => a.actionId));
+  const allActions: ActionDoc[] = await res.json();
+  console.log("[Actions] Loaded", allActions.length, "action(s):", allActions.map(a => a.actionId));
 
-  // (A) Register one local handler per action: action.<actionId>
+  // Cap BEFORE registering so the model's tools match what we actually register.
+  const actions = typeof maxTools === "number" && maxTools > 0
+    ? allActions.slice(0, maxTools)
+    : allActions;
+
+  if (actions.length === 0) {
+    // Still update session with just core tools and your prompt
+    updateSession({ tools: [...coreTools], instructions: systemPrompt });
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("tool-registry-updated"));
+    }
+    console.warn("[Actions] No actions to register for tenant:", tenantId);
+    return;
+  }
+
+  // (C) Register one local handler per action: action.<actionId>
   for (const action of actions) {
     const toolName = `action.${action.actionId}`; // e.g., action.book_stay
 
-    // register concrete tool
     registerFunction(toolName, async (input: any) => {
       const args = input ?? {};
 
-      // Validate against the action's input schema
+      // 1) Validate against the action's input schema
       const missing = missingRequired(action.inputSchema, args);
       if (missing.length) {
         return {
@@ -62,23 +102,27 @@ export async function loadAndRegisterTenantActions(opts: {
       }
 
       try {
+        // 2) Execute the action
         const result = await runEffect(action, args);
 
-        // Optional UI open/close
+        // 3) Optional UI instructions
         const ui = result?.ui ?? action.ui;
-        if (ui?.open && stageRef?.current?.show) {
-          stageRef.current.show({
+        if (ui?.open && showOnStage) {
+          // Normalize to your stage API: { component_name, ...props }
+          showOnStage({
             component_name: ui.open.component,
             ...(ui.open.props ?? {}),
             input: args,
             result,
           });
         }
-        if (ui?.close && stageRef?.current?.hide) {
-          stageRef.current.hide();
+        if (ui?.close && hideStage) {
+          hideStage();
         }
 
+        // 4) Speak line (short, used by voice agent)
         const speak = result?.speak ?? action.speakTemplate ?? "Done.";
+
         return { ok: true, data: result?.data, ui, speak };
       } catch (err: any) {
         console.error(`[Actions] ${toolName} error:`, err);
@@ -87,29 +131,25 @@ export async function loadAndRegisterTenantActions(opts: {
     });
   }
 
-  // (B) Build per-action ToolDefs so the MODEL can call them directly
-  let actionTools: ToolDef[] = actions.map((a) => ({
+  // (D) Build Tool Schemas so the MODEL can call them directly
+  const actionTools: ToolDef[] = actions.map((a) => ({
     type: "function",
     name: `action.${a.actionId}`,
     description: a.description ?? a.title ?? a.actionId,
+    // Let the model see/use the action's JSON schema
     parameters: a.inputSchema ?? { type: "object", properties: {}, additionalProperties: true },
   }));
 
-  // Optional safety headroom under the 128 tool ceiling
-  if (typeof maxTools === "number" && maxTools > 0) {
-    actionTools = actionTools.slice(0, maxTools);
-  }
-
-  // (C) Expose to the session: core tools + per-action tools
+  // (E) Expose to the session: core tools + per-action tools
   updateSession({
     tools: [...coreTools, ...actionTools],
     instructions: systemPrompt,
   });
 
-  // Notify your /registry UI
+  // Let your /registry UI refresh
   if (typeof window !== "undefined") {
     window.dispatchEvent(new CustomEvent("tool-registry-updated"));
   }
 
-  console.log("[Actions] Exposed", actionTools.length, "action tool(s) to model.");
+  console.log("[Actions] Registered and exposed", actionTools.length, "action tool(s) to model.");
 }
