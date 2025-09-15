@@ -39,3 +39,17 @@ export async function runEffect(action: ActionDoc, input: any) {
 
   return { ok: false, error: "Unknown effect type" };
 }
+
+/** 
+ * REALTIME API only accepts tool names matching ^[a-zA-Z0-9_-]+$
+ * Make any string safe for OpenAI tool names: replace invalid chars with '_' 
+*/
+export function safeToolName(base: string): string {
+  return String(base).replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
+/** Canonical tool name for an action id, e.g. "book.stay" -> "action_book_stay" */
+export function actionToolName(actionId: string): string {
+  return `action_${safeToolName(actionId)}`;
+}
+

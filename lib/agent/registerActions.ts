@@ -1,6 +1,7 @@
 // lib/agent/registerTenantActions.ts
 import type { ToolDef } from "@/types/tools";
 import type { ActionDoc } from "@/types/actions";
+import { actionToolName } from "@/lib/agent/helper"
 import {
   missingRequired,
   buildPromptFromMissing,
@@ -86,7 +87,7 @@ export async function loadAndRegisterTenantActions(opts: {
 
   // (C) Register one local handler per action: action.<actionId>
   for (const action of actions) {
-    const toolName = `action.${action.actionId}`; // e.g., action.book_stay
+    const toolName = actionToolName(action.actionId); // e.g., action_book_stay
 
     registerFunction(toolName, async (input: any) => {
       const args = input ?? {};
@@ -134,7 +135,7 @@ export async function loadAndRegisterTenantActions(opts: {
   // (D) Build Tool Schemas so the MODEL can call them directly
   const actionTools: ToolDef[] = actions.map((a) => ({
     type: "function",
-    name: `action.${a.actionId}`,
+     name: actionToolName(a.actionId), // ensure tool name is consistent with REALTIME naming req
     description: a.description ?? a.title ?? a.actionId,
     // Let the model see/use the action's JSON schema
     parameters: a.inputSchema ?? { type: "object", properties: {}, additionalProperties: true },

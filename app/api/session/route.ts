@@ -4,11 +4,34 @@ import { NextResponse } from "next/server";
 const ALLOWED_MODELS = new Set(["gpt-4o-realtime-preview-2024-12-17"]);
 const ALLOWED_VOICES = new Set(["alloy", "coral"]);
 
+function normalizeTools(raw: any): any[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((t, i) => {
+    const rawName = t?.name ?? "unnamed_tool";
+    if (!/^[a-zA-Z0-9_-]+$/.test(rawName)) {
+      throw new Error(
+        `Tool name "${rawName}" (tools[${i}].name) is invalid. Allowed: ^[a-zA-Z0-9_-]+$`
+      );
+    }
+    const description = t?.description ?? "";
+    const parameters =
+      t?.parameters && typeof t.parameters === "object"
+        ? t.parameters
+        : { type: "object", properties: {}, additionalProperties: false };
+
+    return { type: "function", name: rawName, description, parameters };
+  });
+}
+
+async function safeJson(req: Request) {
+  try { return await req.json(); } catch { return {}; }
+}
+
 export async function POST(req: Request) {
   try {
     if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY not set");
 
-    const body = await safeJson(req);
+    const body = await safeJson(req);    
     const model =
       ALLOWED_MODELS.has(body.model) ? body.model : "gpt-4o-realtime-preview-2024-12-17";
     const voice =
@@ -48,7 +71,7 @@ export async function POST(req: Request) {
     if (!resp.ok) {
       const errText = await resp.text();
       // Optional diagnostics:
-      // console.error("[/api/session] upstream error:", errText);
+      console.error("[/api/session] upstream error:", errText);
       return NextResponse.json({ error: errText }, { status: resp.status });
     }
 
@@ -61,25 +84,4 @@ export async function POST(req: Request) {
   }
 }
 
-function normalizeTools(raw: any): any[] {
-  if (!Array.isArray(raw)) return [];
-  return raw.map((t) => {
-    const name = t?.name ?? "unnamed_tool";
-    const description = t?.description ?? "";
-    const parameters =
-      t?.parameters && typeof t.parameters === "object"
-        ? t.parameters
-        : { type: "object", properties: {}, additionalProperties: false };
 
-    return {
-      type: "function",       // <-- coerce here
-      name,
-      description,
-      parameters,
-    };
-  });
-}
-
-async function safeJson(req: Request) {
-  try { return await req.json(); } catch { return {}; }
-}

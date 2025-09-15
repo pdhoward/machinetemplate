@@ -23,6 +23,7 @@ import {Diagnostics} from "@/components/diagnostics"
 import { loadAndRegisterTenantActions } from "@/lib/agent/registerActions";
 
 import { useTenant } from "@/context/tenant-context";
+import { actionToolName } from "@/lib/agent/helper";
 import type {ToolDef} from "@/types/tools"
 import { coreTools } from "@/types/tools";  // 
 
@@ -235,10 +236,14 @@ const App: React.FC = () => {
           return await r.json(); // expected { ok, data?/speak?/ui? }
         });      
 
-        // optionally registered generic execute action - each individual action tool has been
-        // registered so not needed
-        registerFunction("execute_action", async ({ action_id, input }: { action_id: string; input?: any }) => {
-          const fn = (window as any)?.getToolRegistrySnapshot?.()?.[`action.${action_id}`];
+        /* 
+           optionally registered generic execute action - 
+           each individual action tool has been registered so not needed
+        */
+        registerFunction("execute_action", async ({ action_id, input }) => {
+          const safeName = actionToolName(action_id); // e.g., action_book_stay
+          const snap = (window as any)?.getToolRegistrySnapshot?.();
+          const fn = snap?.[safeName];
           if (!fn) return { ok: false, error: `Unknown action: ${action_id}` };
           return await fn(input ?? {});
         });
