@@ -160,6 +160,57 @@ export function RealtimeProvider({
     clientRef.current.exposeRegistryToWindow();
   }
 
+  // --- stable client getter ---
+  const getClient = useCallback(() => clientRef.current!, []);
+
+  // --- stable methods (do NOT depend on changing state) ---
+  const connect               = useCallback((p?: { requestMic?: boolean }) => getClient().connect(p), [getClient]);
+  const disconnect            = useCallback(() => getClient().disconnect(), [getClient]);
+  const sendText              = useCallback((t: string) => getClient().sendText(t), [getClient]);
+  const cancelAssistantSpeech = useCallback(() => getClient().cancelAssistantSpeech(), [getClient]);
+  const pttDown               = useCallback(() => getClient().pttDown(), [getClient]);
+  const pttUp                 = useCallback(() => getClient().pttUp(), [getClient]);
+
+  const setAgentCb = useCallback((a: AgentConfigInput) => {
+    agentRef.current = { ...agentRef.current, ...a };
+    const c = getClient();
+    c.setAgent(agentRef.current as ClientAgentConfig);
+    c.updateSession({});
+  }, [getClient]);
+
+  const updateSessionCb = useCallback((p: Partial<AgentConfigInput>) => {
+    agentRef.current = { ...agentRef.current, ...p };
+    getClient().updateSession(p as Partial<ClientAgentConfig>);
+  }, [getClient]);
+
+  const registerFunctionCb = useCallback((name: string, fn: (args: any) => Promise<any> | any) => {
+    getClient().registerFunction(name, fn);
+  }, [getClient]);
+
+  // unregister helpers
+  const hasFunctionCb = useCallback((name: string) => getClient().hasFunction(name), [getClient]);
+  const listFunctionNamesCb = useCallback(() => getClient().listFunctionNames(), [getClient]);
+  const unregisterFunctionCb = useCallback((name: string) => getClient().unregisterFunction(name), [getClient]);
+  const unregisterByPrefixCb = useCallback(
+    (prefix: string, keep: string[] = []) => getClient().unregisterFunctionsByPrefix(prefix, keep),
+    [getClient]
+  );
+
+  // mic + extras
+  const setMicEnabledCb = useCallback((enabled: boolean) => getClient().setMicEnabled(enabled), [getClient]);
+  const isMicEnabledCb  = useCallback(() => getClient().isMicEnabled(), [getClient]);
+  const forceToolCallCb = useCallback(
+    (name: string, args?: any, sayAfter?: string) => getClient().forceToolCall(name, args, sayAfter),
+    [getClient]
+  );
+
+  const setCallbacksCb = useCallback((partial: {
+    onShowComponent?: (name: string) => void;
+    onServerEvent?: (ev: any) => void;
+  }) => {
+    getClient().setCallbacks(partial);
+  }, [getClient]);
+
   // Keep callbacks fresh if provider options change
   useEffect(() => {
     clientRef.current?.setCallbacks({
@@ -179,53 +230,50 @@ export function RealtimeProvider({
   }, []);
 
   // Public API (mirrors your useWebRTC)
-  const api = useMemo<RealtimeContextValue>(() => {
-    const c = clientRef.current!;
-    return {
-      status,
-      conversation,
-      volume,
-      events,
+  const api = useMemo<RealtimeContextValue>(() => ({
+    
+    status,
+    conversation,
+    volume,
+    events,
 
-      connect: (p?: { requestMic?: boolean }) => c.connect(p),
-      disconnect: () => c.disconnect(),
-      sendText: (t: string) => c.sendText(t),
-      cancelAssistantSpeech: () => c.cancelAssistantSpeech(),
-      pttDown: () => c.pttDown(),
-      pttUp: () => c.pttUp(),
+    // stable methods
+    connect,
+    disconnect,
+    sendText,
+    cancelAssistantSpeech,
+    pttDown,
+    pttUp,
 
-      setAgent: (a: AgentConfigInput) => {
-        // update local agent snapshot then push to client
-        agentRef.current = { ...agentRef.current, ...a };
-        c.setAgent(agentRef.current as ClientAgentConfig);
-        c.updateSession({}); // push immediately
-      },
+    setAgent: setAgentCb,
+    updateSession: updateSessionCb,
 
-      updateSession: (p: Partial<AgentConfigInput>) => {
-        agentRef.current = { ...agentRef.current, ...p };
-        c.updateSession(p as Partial<ClientAgentConfig>);
-      },
+    registerFunction: registerFunctionCb,
 
-      registerFunction: (name: string, fn: (args: any) => Promise<any> | any) => c.registerFunction(name, fn),
+    hasFunction: hasFunctionCb,
+    listFunctionNames: listFunctionNamesCb,
+    unregisterFunction: unregisterFunctionCb,
+    unregisterFunctionsByPrefix: unregisterByPrefixCb,
 
-      hasFunction: (name: string) => c.hasFunction(name),
-      listFunctionNames: () => c.listFunctionNames(),
-      unregisterFunction: (name: string) => c.unregisterFunction(name),
-      unregisterFunctionsByPrefix: (prefix: string, keep: string[] = []) =>
-        c.unregisterFunctionsByPrefix(prefix, keep),
-      
-      setMicEnabled: (enabled: boolean) => c.setMicEnabled(enabled),
-      isMicEnabled: () => c.isMicEnabled(),
+    setMicEnabled: setMicEnabledCb,
+    isMicEnabled: isMicEnabledCb,
 
-      getClient: () => c,
-      forceToolCall: (name: string, args?: any, sayAfter?: string) => c.forceToolCall(name, args, sayAfter),
+    getClient,           // stable getter
+    forceToolCall: forceToolCallCb,
 
-      setCallbacks: (partial: {
-        onShowComponent?: (name: string) => void;
-        onServerEvent?: (ev: any) => void;
-      }) => c.setCallbacks(partial),
-    };
-  }, [status, conversation, volume, events]);
+    setCallbacks: setCallbacksCb,
+  }), [
+    // include state so subscribers re-render with new state values,
+    // but the method identities remain stable by levering useCallback above.
+    status, conversation, volume, events,
+
+    // include the stable callbacks themselves 
+    connect, disconnect, sendText, cancelAssistantSpeech, pttDown, pttUp,
+    setAgentCb, updateSessionCb, registerFunctionCb,
+    hasFunctionCb, listFunctionNamesCb, unregisterFunctionCb, unregisterByPrefixCb,
+    setMicEnabledCb, isMicEnabledCb, getClient, forceToolCallCb, setCallbacksCb,
+  ]);
+
 
   return <RealtimeCtx.Provider value={api}>{children}</RealtimeCtx.Provider>;
 }

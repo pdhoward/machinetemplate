@@ -1,66 +1,95 @@
-
+// app/api/things/[tenantId]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import getMongoConnection from "@/db/connections";
-import { ThingArraySchema, ThingsQuerySchema } from "@/types/things.schema";
+import { z } from "zod";
+import { ThingBaseSchema, ThingsQuerySchema } from "@/types/things.schema";
 
-export async function GET(req: NextRequest, { params }: { params: Promise<{ tenantId: string }> }) {
- try {
-    const { tenantId } = await params;
-    if (!tenantId) {
-      return NextResponse.json({ error: "tenantId required" }, { status: 400 });
-    }
-    console.log(`-----------debug things----------`)
-    console.log(tenantId)
-    console.log(req.url)
+const ThingsArray = z.array(ThingBaseSchema);
 
-    // Parse query (type, q, limit, searchable)
-    const url = new URL(req.url);
-    const queryParse = ThingsQuerySchema.safeParse({
-      type: url.searchParams.get("type") ?? undefined,
-      q: url.searchParams.get("q") ?? undefined,
-      limit: url.searchParams.get("limit") ?? undefined,
-      searchable: url.searchParams.get("searchable") ?? undefined,
+// Build a safe query object from parsed params
+function buildFilter(tenantId: string, q: z.infer<typeof ThingsQuerySchema>) {
+  const filter: Record<string, any> = { tenantId };
+
+  // Prefer status=active over non-existent `enabled: true`
+  // Only apply if the doc uses `status` (it's optional in schema)
+  if (q.searchable !== undefined) {
+    filter.searchable = q.searchable;
+  }
+
+  // If you want only "active" by default, add it:
+  filter.status = "active"; // default; remove if you want *all* statuses by default
+
+  if (q.type) {
+    filter.type = q.type;
+  }
+
+  if (q.q) {
+    const rx = new RegExp(q.q, "i");
+    filter.$or = [
+      { name: rx },
+      { title: rx },
+      { description: rx },
+      { tags: { $in: [rx] } },
+      { slug: rx },
+    ];
+  }
+
+  return filter;
+}
+
+export async function GET(
+  req: NextRequest,
+  ctx: { params: Promise<{ tenantId: string }> }
+) {
+  try {
+    const { tenantId } = await ctx.params;
+
+    // read & validate query string
+    const sp = req.nextUrl.searchParams;
+    const parse = ThingsQuerySchema.safeParse({
+      type: sp.get("type") ?? undefined,
+      q: sp.get("q") ?? undefined,
+      limit: sp.get("limit") ?? undefined,
+      searchable: sp.get("searchable") ?? undefined,
     });
-    if (!queryParse.success) {
-      return NextResponse.json({ error: "Invalid query", issues: queryParse.error.issues }, { status: 400 });
+
+    if (!parse.success) {
+      return NextResponse.json(
+        { error: "Invalid query", issues: parse.error.issues },
+        { status: 400 }
+      );
     }
-    
-    console.log(queryParse.data)
-    const { type, q, limit = 100, searchable } = queryParse.data;
+
+    const q = parse.data;
+
+    // defaults
+    const limit = Math.min(q.limit ?? 100, 500); // default 100, max 500
 
     const { db } = await getMongoConnection(process.env.DB!, process.env.MAINDBNAME!);
 
-    // Build filter
-    const filter: Record<string, any> = { tenantId, enabled: true };
-    if (type) filter.type = type;
-    if (typeof searchable === "boolean") filter.searchable = searchable;
-    if (q) {
-      // very simple text search heuristic; adjust to your index strategy
-      filter.$or = [
-        { name: { $regex: q, $options: "i" } },
-        { title: { $regex: q, $options: "i" } },
-        { description: { $regex: q, $options: "i" } },
-        { tags: { $in: [new RegExp(q, "i")] } },
-      ];
-    }
+    const filter = buildFilter(tenantId, q);
 
-    const cursor = db
-      .collection("things")
-      .find(filter, { projection: { _id: 0 } })
+    const cursor = db.collection("things")
+      .find(filter)
+      .project({ _id: 0 })
+      .sort({ updatedAt: -1 })   // newest first
       .limit(limit);
 
     const docs = await cursor.toArray();
 
-    // Validate and pass through unknown fields
-    const parsed = ThingArraySchema.parse(docs);
+    // Optional: validate server output (skip if perf sensitive)
+    // If it ever throws during dev, you’ll know a doc is malformed.
+    // In prod, you might switch to .safeParse and log instead.
+    try {
+      ThingsArray.parse(docs);
+    } catch (e) {
+      // don’t fail the request, but surface the issue
+      console.warn("[/api/things] Schema mismatch:", e);
+    }
 
-    // (Optional) If you want to return a normalized view instead, you could:
-    // const views = parsed.map(toThingView);
-    // return NextResponse.json(views);
-
-    return NextResponse.json(parsed);
+    return NextResponse.json(docs);
   } catch (err: any) {
-    console.error("[GET /api/things/[tenantId]] error:", err);
-    return NextResponse.json({ error: "Server error", detail: String(err?.message || err) }, { status: 500 });
+    console.error("[/api/things] error:", err);
+    return NextResponse.json({ error: String(err?.message || err) }, { status: 500 });
   }
 }

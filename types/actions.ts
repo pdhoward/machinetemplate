@@ -1,27 +1,61 @@
-// /lib/types/actions.ts
-export type JSONSchema = Record<string, any>;
+// types/actions.ts
 
-export type ActionEffect =
-  | { type: "http"; method: "GET"|"POST"|"PATCH"; url: string; headers?: Record<string,string> }
-  | { type: "operation"; name: string }; // points to your /src/operations/* executionTool
-  // you can add "queue", "workflow", etc.
+/** Keep JSON Schema flexible; you can swap to JSONSchema7 later */
+export type JsonSchema = Record<string, any>;
 
-export type ActionUI =
-  | { open: { component: "payment"|"rooms_gallery"|"map"|"video_tour"|"custom"; props?: any } }
-  | { close: true }
-  | undefined;
+export type ActionUISpec = {
+  open?: {
+    component: string;
+    /** Arbitrary props your stage understands */
+    props?: Record<string, any>;
+  };
+  close?: boolean;
+};
+
+export type ActionPipelineStep = {
+  /** Logical op name the effect runner understands (e.g., "checkAvailability") */
+  op: string;
+  /** Optional per-step args/overrides passed to the op runner */
+  args?: Record<string, any>;
+};
+
+/** The only supported effect now: a pipeline of steps */
+export type ActionEffectPipeline = {
+  type: "pipeline";
+  steps: ActionPipelineStep[];
+};
+
+export type ActionEffect = ActionEffectPipeline;
 
 export type ActionDoc = {
-  _id: string;
+  /** Stable doc id */
+  id: string;
+  /** Tenant scoping */
   tenantId: string;
-  actionId: string;             // e.g., "book_stay"
-  title: string;                // human label
-  description: string;          // 1-2 lines of intent
-  inputSchema: JSONSchema;      // JSON Schema for inputs (drives slots)
-  effect: ActionEffect;         // what server should do
-  ui?: ActionUI;                // default UI instruction (optional)
-  speakTemplate?: string;       // short single-sentence success line
-  requiresPayment?: boolean;    // optional guard
-  enabled: boolean;
-  updatedAt: string;
+  /** The action tool id used by the model (e.g., "book_stay") */
+  actionId: string;
+
+  /** Human labels */
+  title?: string;
+  description?: string;
+
+  /** JSON Schema for input validation (what the tool exposes to the model) */
+  inputSchema: JsonSchema;
+
+  /** How to execute (pipeline only) */
+  effect: ActionEffect;
+
+  /** Optional UI hints (stage open/close) */
+  ui?: ActionUISpec;
+
+  /** Optional assistant speech template */
+  speakTemplate?: string;
+
+  /** Commercial flags */
+  requiresPayment?: boolean;
+  enabled?: boolean;
+
+  /** Timestamps */
+  createdAt?: string;  // ISO
+  updatedAt?: string;  // ISO
 };

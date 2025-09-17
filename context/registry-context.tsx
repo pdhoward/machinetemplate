@@ -1,3 +1,4 @@
+// ToolRegistryProvider.tsx
 'use client';
 
 import React, {
@@ -10,22 +11,23 @@ import React, {
   useState,
 } from 'react';
 
-type ToolFn = Function;
+type ToolFn = (...args: any[]) => any;
 type ToolSnapshot = Record<string, ToolFn>;
 
 type SourceStatus = {
-  getter: { available: boolean; keys: string[] };
+  ctx:      { available: boolean; keys: string[] }; // NEW: context path
+  getter:   { available: boolean; keys: string[] };
   realtime: { available: boolean; keys: string[] };
-  global: { available: boolean; keys: string[] };
+  global:   { available: boolean; keys: string[] };
 };
 
 type LoadStats = {
   lastLoadedAt: Date | null;
   lastError: string | null;
   lastReason: string | null;
-  loads: number;          // total load() calls
-  updates: number;        // 'tool-registry-updated' events processed
-  retries: number;        // retry loop attempts
+  loads: number;
+  updates: number;
+  retries: number;
 };
 
 type ToolRegistryState = {
@@ -40,36 +42,47 @@ type ToolRegistryContextValue = ToolRegistryState & {
   refresh: (reason?: string) => void;
   enablePolling: (ms?: number) => void;
   disablePolling: () => void;
-  // debugging controls
   setVerboseLogging: (on: boolean) => void;
+};
+
+// 🔧 NEW: allow an app-level (context-backed) snapshot + subscription
+type ExternalBridge = {
+  /** Return the current registry snapshot (or null if not ready) */
+  getSnapshot?: () => ToolSnapshot | null;
+  /** Subscribe to updates; return an unsubscribe function */
+  subscribeUpdates?: (cb: () => void) => () => void;
 };
 
 const ToolRegistryContext = createContext<ToolRegistryContextValue | null>(null);
 
 // ---------- Utilities ----------
-const safeKeys = (obj?: Record<string, any> | null) =>
-  obj ? Object.keys(obj) : [];
+const safeKeys = (obj?: Record<string, any> | null) => (obj ? Object.keys(obj) : []);
 
-function sourceNow(): SourceStatus {
+function sourceNow(ext?: ExternalBridge): SourceStatus {
   if (typeof window === 'undefined') {
     return {
+      ctx:      { available: !!ext?.getSnapshot, keys: [] },
       getter:   { available: false, keys: [] },
       realtime: { available: false, keys: [] },
       global:   { available: false, keys: [] },
     };
   }
 
-  // 1) Preferred: explicit getter installed by your Realtime client
+  // 0) Context bridge
+  let ctxKeys: string[] = [];
+  const ctxAvailable = typeof ext?.getSnapshot === 'function';
+  if (ctxAvailable) {
+    try { ctxKeys = safeKeys(ext!.getSnapshot!()); } catch {}
+  }
+
+  // 1) Preferred: explicit getter installed by the Realtime client
   let getterKeys: string[] = [];
-  const getterAvailable =
-    typeof (window as any).getToolRegistrySnapshot === 'function';
+  const getterAvailable = typeof (window as any).getToolRegistrySnapshot === 'function';
   if (getterAvailable) {
     try {
       const snap = (window as any).getToolRegistrySnapshot?.();
       getterKeys = safeKeys(snap);
-    } catch {
-      // ignore
-    }
+    } catch {}
   }
 
   // 2) Realtime instance path
@@ -80,9 +93,7 @@ function sourceNow(): SourceStatus {
     try {
       const snap = r.getFunctionRegistrySnapshot?.();
       realtimeKeys = safeKeys(snap);
-    } catch {
-      // ignore
-    }
+    } catch {}
   }
 
   // 3) Global mirror
@@ -90,41 +101,52 @@ function sourceNow(): SourceStatus {
   const globalObj = (window as any).__OPENAI_TOOL_REGISTRY;
   const globalAvailable = !!globalObj;
   if (globalAvailable) {
-    try {
-      globalKeys = safeKeys(globalObj);
-    } catch {
-      // ignore
-    }
+    try { globalKeys = safeKeys(globalObj); } catch {}
   }
 
   return {
-    getter:   { available: getterAvailable,  keys: getterKeys },
+    ctx:      { available: ctxAvailable, keys: ctxKeys },
+    getter:   { available: getterAvailable, keys: getterKeys },
     realtime: { available: realtimeAvailable, keys: realtimeKeys },
-    global:   { available: globalAvailable,  keys: globalKeys },
+    global:   { available: globalAvailable, keys: globalKeys },
   };
 }
 
-function pickBestSnapshot(): { src: keyof SourceStatus; data: ToolSnapshot | null } {
-  if (typeof window === 'undefined') return { src: 'getter', data: null };
+function pickBestSnapshot(ext?: ExternalBridge): { src: keyof SourceStatus; data: ToolSnapshot | null } {
+  if (typeof window === 'undefined') {
+    // During SSR, only ext.getSnapshot might exist
+    if (ext?.getSnapshot) {
+      const data = ext.getSnapshot();
+      if (data && Object.keys(data).length) return { src: 'ctx', data };
+    }
+    return { src: 'getter', data: null };
+  }
 
-  // priority: getter -> realtime -> global
+  // Priority: ctx -> getter -> realtime -> global
+  try {
+    if (ext?.getSnapshot) {
+      const snap = ext.getSnapshot();
+      if (snap && Object.keys(snap).length) return { src: 'ctx', data: snap };
+    }
+  } catch {}
+
   try {
     if (typeof (window as any).getToolRegistrySnapshot === 'function') {
       const snap = (window as any).getToolRegistrySnapshot?.();
       if (snap && Object.keys(snap).length) return { src: 'getter', data: snap };
     }
-  } catch { /* ignore */ }
+  } catch {}
 
   try {
     const rt = (window as any).realtime;
     const snap = rt?.getFunctionRegistrySnapshot?.();
     if (snap && Object.keys(snap).length) return { src: 'realtime', data: snap };
-  } catch { /* ignore */ }
+  } catch {}
 
   try {
     const snap = (window as any).__OPENAI_TOOL_REGISTRY;
     if (snap && Object.keys(snap).length) return { src: 'global', data: { ...snap } };
-  } catch { /* ignore */ }
+  } catch {}
 
   return { src: 'getter', data: null };
 }
@@ -132,17 +154,24 @@ function pickBestSnapshot(): { src: keyof SourceStatus; data: ToolSnapshot | nul
 // ---------- Provider ----------
 export function ToolRegistryProvider({
   children,
-  retryCount = 6,     // tries after mount
-  retryEveryMs = 350, // spacing between tries
+  retryCount = 6,
+  retryEveryMs = 350,
   initialVerbose = false,
+  // 🔧 NEW: optional context-backed bridge
+  getSnapshot,
+  subscribeUpdates,
 }: {
   children: React.ReactNode;
   retryCount?: number;
   retryEveryMs?: number;
   initialVerbose?: boolean;
+  getSnapshot?: ExternalBridge['getSnapshot'];
+  subscribeUpdates?: ExternalBridge['subscribeUpdates'];
 }) {
+  const ext = useMemo<ExternalBridge>(() => ({ getSnapshot, subscribeUpdates }), [getSnapshot, subscribeUpdates]);
+
   const [tools, setTools] = useState<ToolSnapshot>({});
-  const [sourceStatus, setSourceStatus] = useState<SourceStatus>(sourceNow());
+  const [sourceStatus, setSourceStatus] = useState<SourceStatus>(sourceNow(ext));
   const [isLoading, setIsLoading] = useState(false);
   const [stats, setStats] = useState<LoadStats>({
     lastLoadedAt: null,
@@ -161,13 +190,11 @@ export function ToolRegistryProvider({
   }, [verbose]);
 
   const loadOnce = useCallback((reason: string) => {
-    if (typeof window === 'undefined') return;
-
     setIsLoading(true);
-    const status = sourceNow();
+    const status = sourceNow(ext);
     setSourceStatus(status);
 
-    const picked = pickBestSnapshot();
+    const picked = pickBestSnapshot(ext);
     const now = new Date();
 
     if (!picked.data) {
@@ -175,7 +202,7 @@ export function ToolRegistryProvider({
       setStats(s => ({
         ...s,
         lastLoadedAt: now,
-        lastError: 'No registry available from getter/realtime/global.',
+        lastError: 'No registry available from context/getter/realtime/global.',
         lastReason: reason,
         loads: s.loads + 1,
       }));
@@ -193,7 +220,7 @@ export function ToolRegistryProvider({
       loads: s.loads + 1,
     }));
     log('loadOnce:', reason, '→', Object.keys(picked.data).length, 'tools via', picked.src);
-  }, [log]);
+  }, [ext, log]);
 
   const refresh = useCallback((reason?: string) => {
     loadOnce(reason ?? 'manual');
@@ -217,21 +244,21 @@ export function ToolRegistryProvider({
     }
   }, [log]);
 
-  // Initial mount: do an immediate load + small retry loop
+  // Initial mount + retry loop
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-
     loadOnce('mount');
 
     let tries = 0;
     const id = window.setInterval(() => {
       tries++;
-      const status = sourceNow();
-      const picked = pickBestSnapshot();
+      const status = sourceNow(ext);
+      const picked = pickBestSnapshot(ext);
       const haveAny =
+        status.ctx.keys.length > 0 ||
         status.getter.keys.length > 0 ||
         status.realtime.keys.length > 0 ||
         status.global.keys.length > 0;
+
       setSourceStatus(status);
       setStats(s => ({ ...s, retries: tries }));
 
@@ -253,18 +280,32 @@ export function ToolRegistryProvider({
     }, retryEveryMs);
 
     return () => window.clearInterval(id);
-  }, [loadOnce, retryCount, retryEveryMs, log]);
+  }, [loadOnce, retryCount, retryEveryMs, log, ext]);
 
-  // Live updates
+  // Live updates: prefer external subscription; fallback to window event
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const handler = (ev: any) => {
-      setStats(s => ({ ...s, updates: s.updates + 1 }));
-      loadOnce('event');
+    let unsubscribe: (() => void) | null = null;
+
+    if (ext.subscribeUpdates) {
+      unsubscribe = ext.subscribeUpdates(() => {
+        setStats(s => ({ ...s, updates: s.updates + 1 }));
+        loadOnce('ext-event');
+      });
+      log('subscribed via external subscription');
+    } else {
+      const handler = () => {
+        setStats(s => ({ ...s, updates: s.updates + 1 }));
+        loadOnce('event');
+      };
+      window.addEventListener('tool-registry-updated', handler);
+      unsubscribe = () => window.removeEventListener('tool-registry-updated', handler);
+      log('subscribed via window event');
+    }
+
+    return () => {
+      unsubscribe?.();
     };
-    window.addEventListener('tool-registry-updated', handler);
-    return () => window.removeEventListener('tool-registry-updated', handler);
-  }, [loadOnce]);
+  }, [ext, loadOnce, log]);
 
   const entries = useMemo(
     () =>

@@ -29,6 +29,9 @@ import { coreTools } from "@/types/tools";  //
 
 import { ThingArraySchema } from "@/types/things.schema";
 import { toThingView } from "@/lib/things/view";
+
+import prompts from "@/promptlibrary/prompts.json"
+import { selectPromptForTenant } from "@/lib/agent/prompts";
  
 
 // --- tool schema you expose to the model ---
@@ -46,16 +49,6 @@ const defaultTools: ToolDef[] = [
   },
 ];
 
-const SYSTEM_PROMPT = `
-You are the Cypress Resorts agent. Prefer the tool execute_action to perform tasks using action_id and input.
-Use simple tools like time background, party, launchWebsite, copy to clipboard or scrape web site (which may also be referred to as fetch website site data) to be of assistance to a guest
-Use list_things to browse items (type: "unit", "spa_treatment", "media", "restaurants", or other items).
-Use show_component when you need to display UI (e.g., "payment", "menu", "room").
-If you cannot complete a request with execute_action, you may call getReservations.
-Keep replies short, warm, professional. Ask for missing required fields only.
-Never request full card details by voice—use payment_token.
-`;
-
 // ---------- page ----------
 const App: React.FC = () => {
   const [isOpen, setIsOpen] = useState(true); // for the close “×” button
@@ -69,18 +62,15 @@ const App: React.FC = () => {
 
   const toolsFunctions = useToolsFunctions(); ///set of locally defined tools in hook
   
-  const [agent, setAgentState] = useState({
-    name: "Cypress Resorts",
-    voice: "alloy",
-    instructions: SYSTEM_PROMPT,
-    tools: coreTools,
-  });
-
-   const { tenantId } = useTenant();
+  const { tenantId } = useTenant();
   // anchor for the visualizer card
   const messagesEndRef = useRef<HTMLDivElement>(null);
   // anchor for the visual components
   const stageRef = useRef<VisualStageHandle>(null)
+
+  // tenantId available:
+  const { name: agentName, instructions: SYSTEM_PROMPT } =
+      selectPromptForTenant(tenantId ?? "unknown-tenant", prompts);
 
  /*
   Wrap the stageRef with a stable function and use that in Registering 
@@ -113,33 +103,6 @@ const App: React.FC = () => {
     setCallbacks, 
     getClient,
   } = useRealtime();
-
-  // const {
-  //   status,
-  //   conversation,
-  //   volume,
-  //   events, // raw server events (for logs + analytics)
-  //   connect,
-  //   disconnect,
-  //   sendText,
-  //   pttDown,
-  //   pttUp,
-  //   setAgent,
-  //   updateSession,
-  //   registerFunction,
-  //   setMicEnabled,     // from hook (tiny wrapper to client.setMicEnabled)
-  //   isMicEnabled,      // from hook (tiny wrapper to client.isMicEnabled)
-  //   getClient,
-  //   forceToolCall
-  // } = useWebRTC({    
-  //   model: "gpt-realtime",
-  //   defaultVoice: "alloy",
-  //   appendModelVoiceToUrl: true, // set false for server-only config
-  //   getAgent: () => agent,
-  //   onShowComponent: (name) =>  {
-  //     stageRef.current?.show({ component_name: name });  
-  //   }  
-  // }); 
   
    // Bind callbacks that depend on local refs/state
   useEffect(() => {
@@ -153,7 +116,7 @@ const App: React.FC = () => {
   // Push initial agent config (and whenever it changes)
   useEffect(() => {
     const agent = {
-      name: 'Cypress Resorts',
+      name: tenantId,
       voice,
       instructions: SYSTEM_PROMPT,
       tools: coreTools,
@@ -227,35 +190,24 @@ const App: React.FC = () => {
           });
 
         // proxy to server reservations supervisor
-        registerFunction("getReservations", async ({ relevantContextFromLastUserMessage }) => {
-          const r = await fetch("/api/execute-tool", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ name: "getReservations", input: { relevantContextFromLastUserMessage } }),
-          });
-          return await r.json(); // expected { ok, data?/speak?/ui? }
-        });      
-
-        /* 
-           optionally registered generic execute action - 
-           each individual action tool has been registered so not needed
-        */
-        registerFunction("execute_action", async ({ action_id, input }) => {
-          const safeName = actionToolName(action_id); // e.g., action_book_stay
-          const snap = (window as any)?.getToolRegistrySnapshot?.();
-          const fn = snap?.[safeName];
-          if (!fn) return { ok: false, error: `Unknown action: ${action_id}` };
-          return await fn(input ?? {});
-        });
+        // registerFunction("getReservations", async ({ relevantContextFromLastUserMessage }) => {
+        //   const r = await fetch("/api/execute-tool", {
+        //     method: "POST",
+        //     headers: { "content-type": "application/json" },
+        //     body: JSON.stringify({ name: "getReservations", input: { relevantContextFromLastUserMessage } }),
+        //   });
+        //   return await r.json(); // expected { ok, data?/speak?/ui? }
+        // });            
 
         console.log("[App] CORE tools registration effect END");
          // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);   
 
-    // ✅ 2) Tenant-scoped action tools loaed with change in Tenant
+     //   ✅ 2) Tenant-scoped action tools are reloaded with change in Tenant
       useEffect(() => {
         if (!tenantId) return;
         console.log("[App] registerFunction: execute_action ");
+        unregisterFunctionsByPrefix('action_');
 
         (async () => {
           await loadAndRegisterTenantActions({
@@ -268,10 +220,10 @@ const App: React.FC = () => {
             hideStage,            // 👈 optional
             maxTools: 80,         // headroom under 128
             preclear: {
-            prefix: "action.",
-            unregisterByPrefix: (prefix, keep) => unregisterFunctionsByPrefix(prefix, keep),
-            // keep: ['action.shared_healthcheck'] // if you want to keep some
-          },
+              prefix: "action.",
+              unregisterByPrefix: (prefix, keep) => unregisterFunctionsByPrefix(prefix, keep),
+              // keep: ['action.shared_healthcheck'] // if you want to keep some
+            },
           });
 
           // Let /registry refresh
@@ -280,15 +232,6 @@ const App: React.FC = () => {
           }
         })();
       }, [tenantId, registerFunction, updateSession, showOnStage, hideStage, unregisterFunctionsByPrefix]);
-
-
-  // Keep Voice Agent in sync with selector if new voice selectd
-  // useEffect(() => {
-  //   const next = { ...agent, voice, instructions: SYSTEM_PROMPT, tools: coreTools }
-  //   setAgentState(next);
-  //   setAgent(next);
-  //   updateSession({ voice, instructions: SYSTEM_PROMPT, tools: coreTools }); // push to live session if connected
-  // }, [voice]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Timer based on connection status
   useEffect(() => {
@@ -302,15 +245,6 @@ const App: React.FC = () => {
       if (id) clearInterval(id);
     };
   }, [status]);
-
-  // this exposes the existing webrtc client when mounts
-  // useEffect(() => {
-  //   if (typeof window === 'undefined') return;
-  //   const c = getClient();
-  //   (window as any).realtime = c;
-  //   (window as any).getToolRegistrySnapshot = () => c.getFunctionRegistrySnapshot?.();
-  //   (window as any).__OPENAI_TOOL_REGISTRY = (window as any).__OPENAI_TOOL_REGISTRY ?? {};
-  // }, [getClient]);
 
 
   const isConnected = status === "CONNECTED";
