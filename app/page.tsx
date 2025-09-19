@@ -187,17 +187,7 @@ const App: React.FC = () => {
             // Option B: return normalized views so the model/UI has a predictable shape
             const views = parse.data.map(toThingView);
             return { ok: true, data: views };
-          });
-
-        // proxy to server reservations supervisor
-        // registerFunction("getReservations", async ({ relevantContextFromLastUserMessage }) => {
-        //   const r = await fetch("/api/execute-tool", {
-        //     method: "POST",
-        //     headers: { "content-type": "application/json" },
-        //     body: JSON.stringify({ name: "getReservations", input: { relevantContextFromLastUserMessage } }),
-        //   });
-        //   return await r.json(); // expected { ok, data?/speak?/ui? }
-        // });            
+          });             
 
         console.log("[App] CORE tools registration effect END");
          // eslint-disable-next-line react-hooks/exhaustive-deps

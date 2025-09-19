@@ -28,10 +28,10 @@ export interface AgentConfigInput {
 }
 
 export interface RealtimeOptions {
-  model?: string;                    // default: keep yours flexible
+  model?: string;                    // default: keep flexible
   voice?: string;                    // can be overridden per-agent
   tokenProvider?: () => Promise<string>; // returns ephemeral key
-  apiBase?: string;                  // default realtime base (no need to change)
+  apiBase?: string;                  // default realtime base 
   turnDetection?: null | {
     type: "server_vad";
     threshold?: number;
@@ -230,7 +230,6 @@ registerFunction(name: string, fn: (args: any) => Promise<any> | any) {
     toRemove.forEach(n => this.unregisterFunction(n));
     return toRemove.length;
   }
- 
 
   /*
    * Ask the model to call a specific tool right now (best-effort). 
@@ -269,9 +268,6 @@ public forceToolCall(name: string, args?: any, sayAfter?: string) {
     },
   });
 }
-
-
-
   /** Toggle the local microphone track on/off without renegotiation. */
   public setMicEnabled(enabled: boolean): void {
     this.micStream?.getAudioTracks().forEach(t => (t.enabled = enabled));
@@ -283,9 +279,7 @@ public forceToolCall(name: string, args?: any, sayAfter?: string) {
   }
   
   public getDataChannel(): RTCDataChannel | null { return this.dc; }
-  public getPeerConnection(): RTCPeerConnection | null { return this.pc; }  // 👈 add this
-
-
+  public getPeerConnection(): RTCPeerConnection | null { return this.pc; }  
 
   // ---------- Connect / Disconnect ----------
  public async connect({ requestMic = true }: { requestMic?: boolean } = {}) {
@@ -345,7 +339,8 @@ public forceToolCall(name: string, args?: any, sayAfter?: string) {
 
     // 7) Build Realtime URL (two styles)
     const base = this.opts.apiBase ?? "https://api.openai.com/v1/realtime";
-    const model = this.opts.model ?? "gpt-4o-realtime-preview-2024-12-17";
+    //const model = this.opts.model ?? "gpt-4o-realtime-preview-2024-12-17";
+    const model = this.opts.model ?? "gpt-realtime";
     const voice = this.agent.voice ?? this.opts.voice ?? "alloy";
 
     // A) Keep params (redundant but crystal-clear)

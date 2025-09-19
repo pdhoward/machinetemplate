@@ -4,7 +4,7 @@ export type PromptDoc = {
   agent: {
     tenantId: string;
     name?: string;
-    instructions: StructuredPrompt | string;
+    instructions?: StructuredPrompt | string;
   };
 };
 

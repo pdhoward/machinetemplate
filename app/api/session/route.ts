@@ -1,7 +1,8 @@
 // app/api/session/route.ts
 import { NextResponse } from "next/server";
 
-const ALLOWED_MODELS = new Set(["gpt-4o-realtime-preview-2024-12-17"]);
+//const ALLOWED_MODELS = new Set(["gpt-4o-realtime-preview-2024-12-17"]);
+const ALLOWED_MODELS = new Set(["gpt-realtime"]);
 const ALLOWED_VOICES = new Set(["alloy", "coral"]);
 
 function normalizeTools(raw: any): any[] {
@@ -33,7 +34,7 @@ export async function POST(req: Request) {
 
     const body = await safeJson(req);    
     const model =
-      ALLOWED_MODELS.has(body.model) ? body.model : "gpt-4o-realtime-preview-2024-12-17";
+      ALLOWED_MODELS.has(body.model) ? body.model : "gpt-realtime";
     const voice =
       ALLOWED_VOICES.has(body.voice) ? body.voice : "alloy";
 
