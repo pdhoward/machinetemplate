@@ -1,7 +1,7 @@
 export type ToolDef = {
   type: "function";
   name: string;
-  description: string;
+  description?: string;
   parameters?: any;
 };
 

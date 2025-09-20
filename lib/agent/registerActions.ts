@@ -36,6 +36,7 @@ export async function loadAndRegisterTenantActions(opts: {
   showOnStage?: (args: any) => void;
   hideStage?: () => void;
   maxTools?: number;
+  skipSessionUpdate?: boolean;
 }) {
   const {
     tenantId,
@@ -47,6 +48,7 @@ export async function loadAndRegisterTenantActions(opts: {
     showOnStage,
     hideStage,
     maxTools,
+    
   } = opts;
 
   if (inflightByTenant[tenantId]) {
@@ -129,13 +131,16 @@ export async function loadAndRegisterTenantActions(opts: {
       parameters: a.inputSchema ?? { type: "object", properties: {}, additionalProperties: true },
     }));
 
-    updateSession({
-      tools: [...coreTools, ...actionTools],    // ✅ one update
+    if (!opts.skipSessionUpdate) {
+    opts.updateSession({
+      tools: [...coreTools, ...actionTools],
       instructions: systemPrompt,
     });
+  }
 
     window?.dispatchEvent?.(new CustomEvent("tool-registry-updated"));
     console.log("[Actions] Registered + exposed", actionTools.length, "action tool(s).");
+    return actionTools; // 👈 caller will decide how/when to updateSession
   } finally {
     inflightByTenant[tenantId] = false;
   }

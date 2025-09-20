@@ -30,8 +30,9 @@ import { coreTools } from "@/types/tools";  //
 import { ThingArraySchema } from "@/types/things.schema";
 import { toThingView } from "@/lib/things/view";
 
-import prompts from "@/promptlibrary/prompts.json"
-import { selectPromptForTenant } from "@/lib/agent/prompts";
+import promptsJson from "@/promptlibrary/prompts.json"
+import { selectPromptForTenant, buildInstructions } from "@/lib/agent/prompts";
+import type { PromptDoc, StructuredPrompt } from "@/types/prompt";
  
 
 // --- tool schema you expose to the model ---
@@ -66,11 +67,7 @@ const App: React.FC = () => {
   // anchor for the visualizer card
   const messagesEndRef = useRef<HTMLDivElement>(null);
   // anchor for the visual components
-  const stageRef = useRef<VisualStageHandle>(null)
-
-  // tenantId available:
-  const { name: agentName, instructions: SYSTEM_PROMPT } =
-      selectPromptForTenant(tenantId ?? "unknown-tenant", prompts);
+  const stageRef = useRef<VisualStageHandle>(null)   
 
  /*
   Wrap the stageRef with a stable function and use that in Registering 
@@ -113,17 +110,10 @@ const App: React.FC = () => {
     });
   }, [setCallbacks]);
 
-  // Push initial agent config (and whenever it changes)
-  useEffect(() => {
-    const agent = {
-      name: tenantId,
-      voice,
-      instructions: SYSTEM_PROMPT,
-      tools: coreTools,
-    };
-    setAgent(agent);
-    updateSession(agent); // safe; pushes to live session if connected
-  }, [voice, setAgent, updateSession]);
+    // Push initial agent config and whenever it changes
+     useEffect(() => {
+      setAgent({ name: tenantId, voice }); // tool instructions handled below
+    }, [tenantId, voice, setAgent]);
 
     // register the local set of tools once
     useEffect(() => {
@@ -196,32 +186,69 @@ const App: React.FC = () => {
      //   ✅ 2) Tenant-scoped action tools are reloaded with change in Tenant
       useEffect(() => {
         if (!tenantId) return;
-        console.log("[App] registerFunction: execute_action ");
-        unregisterFunctionsByPrefix('action_');
 
         (async () => {
-          await loadAndRegisterTenantActions({
+          // 1) Preclear local tenant tools (client-side registry)
+          unregisterFunctionsByPrefix("action_");
+
+          // 2) Register local tenant tools (action_*) but DO NOT updateSession here
+          const actionToolDefs = await loadAndRegisterTenantActions({
             tenantId,
             coreTools,
-            systemPrompt: SYSTEM_PROMPT,
-            registerFunction,     // from useWebRTC
-            updateSession,        // from useWebRTC
-            showOnStage,          // 👈 passing a stable function, rather than stageRef
-            hideStage,            // 👈 optional
-            maxTools: 80,         // headroom under 128
+            systemPrompt: "placeholder",
+            registerFunction,
+            updateSession, // not used because skipSessionUpdate is true
+            showOnStage,
+            hideStage,
+            maxTools: 80,
             preclear: {
-              prefix: "action.",
+              prefix: "action_",
               unregisterByPrefix: (prefix, keep) => unregisterFunctionsByPrefix(prefix, keep),
-              // keep: ['action.shared_healthcheck'] // if you want to keep some
             },
+            skipSessionUpdate: true,
           });
 
-          // Let /registry refresh
-          if (typeof window !== "undefined") {
-            window.dispatchEvent(new CustomEvent("tool-registry-updated"));
-          }
+          // 3) Load tenant HTTP tool descriptors (if you have them in Mongo)
+          const httpToolDefs: ToolDef[] = await fetch(`/api/tool-descriptors/${tenantId}`)
+            .then(r => (r.ok ? r.json() : []))
+            .then((rows: any[]) =>
+              rows.map(row => ({
+                type: "function" as const,
+                name: row.name,
+                description: row.description ?? row.name,
+                parameters: row.parameters ?? { type: "object", properties: {} },
+              })) as ToolDef[]
+            )
+            .catch(() => [] as ToolDef[]);
+
+          // 4) Tools you actually expose
+          const exposedToolDefs: ToolDef[] = [
+            ...coreTools, 
+            ...(actionToolDefs ?? []), 
+            ...(httpToolDefs ?? [])
+          ];
+
+          // 5) Build instructions from tenant prompt + exposed tools
+          const { name: agentName, base } = selectPromptForTenant(
+            tenantId,
+            promptsJson as StructuredPrompt | StructuredPrompt[]
+          );
+          const SYSTEM_PROMPT = buildInstructions(base, exposedToolDefs); // ✅ pass both args
+
+          // 6) Single session update
+          updateSession({ tools: exposedToolDefs, instructions: SYSTEM_PROMPT });
+
+          window.dispatchEvent(new CustomEvent("tool-registry-updated"));
         })();
-      }, [tenantId, registerFunction, updateSession, showOnStage, hideStage, unregisterFunctionsByPrefix]);
+      }, [
+        tenantId,
+        coreTools,
+        registerFunction,
+        updateSession,
+        showOnStage,
+        hideStage,
+        unregisterFunctionsByPrefix,
+      ]);
 
   // Timer based on connection status
   useEffect(() => {
