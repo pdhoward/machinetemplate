@@ -8,7 +8,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ tena
   const { db } = await getMongoConnection(process.env.DB!, process.env.MAINDBNAME!);
   const actions = await db.collection<ActionDoc>("actions")
     .find({ tenantId, enabled: true })
-    .project({ _id: 0 })
+    .project({ _id: 0 }) // excludes _id field from return
     .toArray();
   return NextResponse.json(actions);
 }

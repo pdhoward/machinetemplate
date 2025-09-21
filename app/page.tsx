@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import { tools as builtinTools } from "@/lib/basictools";
 import { useRealtime } from '@/context/realtime-context';
-//import { useWebRTC } from "@/hooks/useWebRTC";
+
 import Visualizer from "@/components/visualizer";
 import VisualStageHost, { VisualStageHandle } from "@/components/visual-stage-host";
 import ControlsBar from "@/components/control-bar";
@@ -23,7 +23,7 @@ import {Diagnostics} from "@/components/diagnostics"
 import { loadAndRegisterTenantActions } from "@/lib/agent/registerActions";
 
 import { useTenant } from "@/context/tenant-context";
-import { actionToolName } from "@/lib/agent/helper";
+import { registerHttpToolsForTenant } from "@/lib/agent/registerTenantHttpTools";
 import type {ToolDef} from "@/types/tools"
 import { coreTools } from "@/types/tools";  // 
 
@@ -146,7 +146,7 @@ const App: React.FC = () => {
           // args can be { component_name, title?, description?, size?, props?, media?, url? }
           stageRef.current?.show(args);
           return { ok: true };
-      });       
+        });       
 
         // list_things
         console.log("[App] registerFunction: list_things");
@@ -177,78 +177,113 @@ const App: React.FC = () => {
             // Option B: return normalized views so the model/UI has a predictable shape
             const views = parse.data.map(toThingView);
             return { ok: true, data: views };
-          });             
+          }); 
+
+          console.log("[App] registerFunction: Booking functions");          
+          registerFunction("booking_check_availability", async ({ tenant_id, unit_id, check_in, check_out }) => {
+            const url = `/api/booking/${tenant_id}/availability?` +
+                        new URLSearchParams({ unit_id, check_in, check_out }).toString();
+            const r = await fetch(url, { cache: "no-store" });
+            const j = await r.json();
+            if (!r.ok) return { ok: false, ...j };
+            return { ok: true, ...j };
+          });
+
+          registerFunction("booking_get_quote", async ({ tenant_id, unit_id, check_in, check_out }) => {
+            const url = `/api/booking/${tenant_id}/quote?` +
+                        new URLSearchParams({ unit_id, check_in, check_out }).toString();
+            const r = await fetch(url, { cache: "no-store" });
+            const j = await r.json();
+            if (!r.ok) return { ok: false, ...j };
+            return { ok: true, ...j };
+          });
+
+          registerFunction("booking_reserve", async ({ tenant_id, unit_id, check_in, check_out, guest }) => {
+            const r = await fetch(`/api/booking/${tenant_id}/reserve`, {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ unit_id, check_in, check_out, guest })
+            });
+            const j = await r.json();
+            if (!r.ok) return { ok: false, ...j };
+            return { ok: true, ...j };
+          });
+
 
         console.log("[App] CORE tools registration effect END");
          // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);   
+        }, []);   
 
-     //   ✅ 2) Tenant-scoped action tools are reloaded with change in Tenant
-      useEffect(() => {
-        if (!tenantId) return;
+       // ✅ 2) Tenant-scoped action tools are reloaded with change in Tenant
+        useEffect(() => {
+          if (!tenantId) return;
 
-        (async () => {
-          // 1) Preclear local tenant tools (client-side registry)
-          unregisterFunctionsByPrefix("action_");
+          (async () => {
+            // 1) Clear tenant-scoped tools by namespace(s)
+            unregisterFunctionsByPrefix("action_");
+            unregisterFunctionsByPrefix("http_"); // if you name http tools with a prefix (optional)
 
-          // 2) Register local tenant tools (action_*) but DO NOT updateSession here
-          const actionToolDefs = await loadAndRegisterTenantActions({
-            tenantId,
-            coreTools,
-            systemPrompt: "placeholder",
-            registerFunction,
-            updateSession, // not used because skipSessionUpdate is true
-            showOnStage,
-            hideStage,
-            maxTools: 80,
-            preclear: {
-              prefix: "action_",
-              unregisterByPrefix: (prefix, keep) => unregisterFunctionsByPrefix(prefix, keep),
-            },
-            skipSessionUpdate: true,
-          });
+            /*
+              Optionally register ActionDoc based tools 
+              Evaluate this code block - are actions docs really needed?
+            
+            */
+            const actionToolDefs = await loadAndRegisterTenantActions({
+              tenantId,
+              coreTools,
+              systemPrompt: "placeholder",
+              registerFunction,
+              updateSession,           // not used, we set skipSessionUpdate: true
+              showOnStage,
+              hideStage,
+              maxTools: 60,            // leave room for http tools under 128 cap
+              preclear: {
+                prefix: "action_",
+                unregisterByPrefix: (prefix, keep) => unregisterFunctionsByPrefix(prefix, keep),
+              },
+              skipSessionUpdate: true,
+            }) || [];
 
-          // 3) Load tenant HTTP tool descriptors (if you have them in Mongo)
-          const httpToolDefs: ToolDef[] = await fetch(`/api/tool-descriptors/${tenantId}`)
-            .then(r => (r.ok ? r.json() : []))
-            .then((rows: any[]) =>
-              rows.map(row => ({
-                type: "function" as const,
-                name: row.name,
-                description: row.description ?? row.name,
-                parameters: row.parameters ?? { type: "object", properties: {} },
-              })) as ToolDef[]
-            )
-            .catch(() => [] as ToolDef[]);
+            // 3) Register HTTP tools + get their ToolDefs
+            const httpToolDefs = await registerHttpToolsForTenant({
+              tenantId,
+              registerFunction,
+              cap: 64, // budget under the model cap
+              fetchDescriptors: async () => {
+                const r = await fetch(`/api/actions/${tenantId}`, { cache: "no-store" });
+                const rows = (r.ok ? await r.json() : []) as any[];
+                // filter only kind === 'http_tool'
+                return rows.filter(x => x.kind === "http_tool");
+              },
+            });
 
-          // 4) Tools you actually expose
-          const exposedToolDefs: ToolDef[] = [
-            ...coreTools, 
-            ...(actionToolDefs ?? []), 
-            ...(httpToolDefs ?? [])
-          ];
+            // 4) Build instructions once (tenant prompt + all exposed tools)
+            const { name: agentName, base } = selectPromptForTenant(
+              tenantId,
+              promptsJson as StructuredPrompt | StructuredPrompt[]
+            );
+            const exposedToolDefs: ToolDef[] = [
+              ...coreTools,
+              ...actionToolDefs,
+              ...httpToolDefs,
+            ];
+            const SYSTEM_PROMPT = buildInstructions(base, exposedToolDefs);
 
-          // 5) Build instructions from tenant prompt + exposed tools
-          const { name: agentName, base } = selectPromptForTenant(
-            tenantId,
-            promptsJson as StructuredPrompt | StructuredPrompt[]
-          );
-          const SYSTEM_PROMPT = buildInstructions(base, exposedToolDefs); // ✅ pass both args
+            // 5) Single session update
+            updateSession({ tools: exposedToolDefs, instructions: SYSTEM_PROMPT });
 
-          // 6) Single session update
-          updateSession({ tools: exposedToolDefs, instructions: SYSTEM_PROMPT });
+            window.dispatchEvent(new CustomEvent("tool-registry-updated"));
+          })();
+        }, [
+          tenantId,
+          coreTools,
+          registerFunction,
+          updateSession,
+          showOnStage,
+          hideStage,
+          unregisterFunctionsByPrefix,
+        ]);
 
-          window.dispatchEvent(new CustomEvent("tool-registry-updated"));
-        })();
-      }, [
-        tenantId,
-        coreTools,
-        registerFunction,
-        updateSession,
-        showOnStage,
-        hideStage,
-        unregisterFunctionsByPrefix,
-      ]);
 
   // Timer based on connection status
   useEffect(() => {
@@ -312,7 +347,7 @@ return (
 
 
     {/* Centered stage */}
-    <div className="mt-20 p-4 flex-1 p-4 flex items-center justify-center">
+    <div className="mt-20 p-4 flex-1 flex items-center justify-center">
       {/* iPhone shell */}
       <motion.div
         className="relative flex items-center justify-center"
