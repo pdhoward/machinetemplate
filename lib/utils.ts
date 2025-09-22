@@ -1,13 +1,48 @@
-import { clsx, type ClassValue } from "clsx"
-import { twMerge } from "tailwind-merge"
+/**
+ * Utility helpers used across the voice-agent workflow.
+ *
+ * WHERE THESE ARE USED IN THE PIPELINE
+ * ------------------------------------
+ * - The platform stores "HTTP tool" descriptors in Mongo. Those descriptors often include
+ *   templated strings (URLs, headers, bodies) with placeholders for runtime values and secrets.
+ * - When a tool runs, we build a "context" object (args + secret proxy) and:
+ *   - `tpl()` fills a *single string* template (supports both {path} and {{path}} syntaxes).
+ *   - `applyTemplate()` walks an *object/array tree* and applies `tpl()` to each string inside.
+ * - `cn()` is unrelated to templating; it’s a UI helper to compose Tailwind classes safely.
+ *
+ * IMPORTANT BEHAVIOR
+ * ------------------
+ * - `tpl()` replaces *missing* values with the empty string "".
+ *   This prevents leaking `{var}` into outbound HTTP, but it can also produce invalid URLs.
+ *   Upstream code should validate that no braces remain (or that required keys exist)
+ *   *before* calling fetch (the /api/tools/execute route does this).
+ */
 
+import { clsx, type ClassValue } from "clsx";
+import { twMerge } from "tailwind-merge";
+
+/**
+ * cn(...classes)
+ * --------------
+ * Tailwind-safe className combiner.
+ *
+ * WHY: Tailwind utilities can conflict. `clsx` builds a space-joined string based on truthiness,
+ * and `tailwind-merge` resolves conflicts (e.g., `p-2` vs `p-4` → keeps the latter).
+ *
+ * EXAMPLE:
+ *   <div className={cn("p-2", isActive && "p-4", "text-sm")} />
+ */
 export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
+  return twMerge(clsx(inputs));
 }
 
-// src/lib/utils/template.ts
-
-// A narrow JSON type that's friendly to TS inference for templating
+/**
+ * JSONValue
+ * ---------
+ * A narrow "JSON-like" type for values we intend to template.
+ * Using this keeps `applyTemplate` honest: it expects plain serializable data
+ * (strings, numbers, booleans, null, objects, arrays)—not Dates, Maps, class instances, etc.
+ */
 export type JSONValue =
   | string
   | number
@@ -16,46 +51,131 @@ export type JSONValue =
   | { [k: string]: JSONValue }
   | JSONValue[];
 
-/** Replace {{ path.to.value }} inside strings using ctx object. */
-export function tpl(str: string, ctx: Record<string, any>): string {
-  return str.replace(/\{\{\s*([^}]+)\s*\}\}/g, (_, path) => {
-    const parts = String(path).split(".");
-    let cur: any = ctx;
-    for (const p of parts) cur = cur?.[p];
-    return cur == null ? "" : String(cur);
-  });
+/** Local alias for a generic dictionary. Intentionally permissive for ctx objects. */
+type Dict = Record<string, any>;
+
+/**
+ * getByPath(obj, "a.b.c")
+ * -----------------------
+ * Safely resolves a nested property using dot-notation.
+ *
+ * WHY: Our templates contain tokens like {tenant_id} or {{secrets.booking_api_key}}.
+ *      We need a single resolver that can walk arbitrary paths.
+ *
+ * BEHAVIOR:
+ *  - Returns `undefined` if any segment is missing.
+ *  - Works for array indices if they are addressed as dots (e.g., "items.0.id").
+ *  - Does not support bracket notation (e.g., "items[0]").
+ *
+ * EXAMPLE:
+ *   getByPath({ a: { b: 1 } }, "a.b")        -> 1
+ *   getByPath({ a: [{ id: 9 }] }, "a.0.id")  -> 9
+ *   getByPath({}, "x.y")                     -> undefined
+ */
+function getByPath(obj: any, path: string) {
+  return path.split(".").reduce((acc, k) => (acc == null ? acc : acc[k]), obj);
 }
 
 /**
- * Recursively apply `tpl` to any string fields within a JSON-like object.
- * Preserves the original shape and returns the same type.
+ * tpl(input, ctx)
+ * ---------------
+ * String template expander. Replaces placeholders with values from `ctx`.
+ *
+ * SUPPORTED SYNTAX:
+ *   - Double braces:  {{ path.to.value }}
+ *   - Single braces:  { path.to.value }
+ *
+ * ORDER MATTERS:
+ *   We replace double-brace tokens *first*, so that {{...}} doesn’t get eaten
+ *   by the single-brace pass.
+ *
+ * MISSING VALUES:
+ *   Missing paths become "" (empty string). This prevents raw `{token}` from leaking
+ *   into URLs/headers, but upstream callers should validate that required tokens existed.
+ *
+ * SECURITY:
+ *   `tpl()` only *substitutes* values. It does not sanitize them. When using it
+ *   for URLs/headers, ensure inputs are trusted or properly validated upstream.
+ *
+ * EXAMPLES:
+ *   tpl("Hello {name}", { name: "Ada" })                            -> "Hello Ada"
+ *   tpl("Bearer {{secrets.apiKey}}", { secrets: { apiKey: "xyz" }}) -> "Bearer xyz"
+ *   tpl("https://x/{tenant}/y", { tenant: "cypress" })              -> "https://x/cypress/y"
  */
-export function applyTemplate<T extends JSONValue>(
-  obj: T,
-  ctx: Record<string, any>
-): T {
-  if (obj == null) return obj;
+export function tpl(input: string, ctx: Dict): string {
+  if (typeof input !== "string") return input as any;
 
-  if (typeof obj === "string") {
-    // As T is a string here, cast back to T
-    return tpl(obj, ctx) as T;
+  // Replace {{ path }} first to avoid the single-brace regex capturing them.
+  let out = input.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_m, p1) => {
+    const v = getByPath(ctx, String(p1).trim());
+    return v == null ? "" : String(v);
+  });
+
+  // Then replace { path } tokens.
+  out = out.replace(/\{([^}]+?)\}/g, (_m, p1) => {
+    const v = getByPath(ctx, String(p1).trim());
+    return v == null ? "" : String(v);
+  });
+
+  return out;
+}
+
+/**
+ * applyTemplate(value, ctx)
+ * ------------------------
+ * Deeply applies `tpl()` to every string within a JSON-like structure,
+ * preserving the original shape and (nominal) type.
+ *
+ * WHEN TO USE:
+ *   - Tool descriptors often contain nested objects (headers, body templates, arrays).
+ *     This function lets you template the entire structure in one call.
+ *
+ * WHAT IT DOES:
+ *   - Strings are templated via `tpl()`.
+ *   - Arrays are mapped element-by-element.
+ *   - Plain objects are recursed key-by-key.
+ *   - Non-strings (number/boolean/null) are left as-is.
+ *
+ * WHAT IT DOES NOT DO:
+ *   - It does not mutate the original object.
+ *   - It does not preserve class instances (expects plain JSON-like data).
+ *   - It does not validate required fields—callers must handle that.
+ *
+ * EXAMPLE:
+ *   const ctx = { tenant_id: "cypress", secrets: { token: "abc" } };
+ *   applyTemplate(
+ *     {
+ *       url: "https://api/x/{tenant_id}",
+ *       headers: { Authorization: "Bearer {{secrets.token}}" },
+ *       body: { unit: "{unit_id}" }
+ *     },
+ *     ctx
+ *   )
+ *   // -> {
+ *   //      url: "https://api/x/cypress",
+ *   //      headers: { Authorization: "Bearer abc" },
+ *   //      body: { unit: "" } // if ctx.unit_id is missing, becomes ""
+ *   //    }
+ */
+export function applyTemplate<T = any>(value: T, ctx: Dict): T {
+  if (value == null) return value;
+
+  if (typeof value === "string") {
+    return tpl(value, ctx) as any;
   }
 
-  if (Array.isArray(obj)) {
-    // Map element-wise and cast back to T (which is JSONValue[])
-    return obj.map((v) => applyTemplate(v as JSONValue, ctx)) as T;
+  if (Array.isArray(value)) {
+    return value.map((v) => applyTemplate(v, ctx)) as any;
   }
 
-  if (typeof obj === "object") {
-    const out: Record<string, JSONValue> = {};
-    for (const [k, v] of Object.entries(obj)) {
-      out[k] = applyTemplate(v as JSONValue, ctx);
+  if (typeof value === "object") {
+    const out: Dict = {};
+    for (const [k, v] of Object.entries(value as Dict)) {
+      out[k] = applyTemplate(v, ctx);
     }
-    // Cast back to T which must be a JSON object shape here
     return out as T;
   }
 
-  // numbers/booleans/null are returned as-is
-  return obj;
+  // numbers, booleans, etc. → unchanged
+  return value;
 }
-

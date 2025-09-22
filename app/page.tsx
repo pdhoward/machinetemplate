@@ -21,6 +21,7 @@ import { useToolsFunctions } from "@/hooks/use-tools";
 import {Diagnostics} from "@/components/diagnostics"
 
 import { loadAndRegisterTenantActions } from "@/lib/agent/registerActions";
+import { fetchTenantHttpTools } from "@/lib/registry/fetchTenantTools";
 
 import { useTenant } from "@/context/tenant-context";
 import { registerHttpToolsForTenant } from "@/lib/agent/registerTenantHttpTools";
@@ -177,38 +178,7 @@ const App: React.FC = () => {
             // Option B: return normalized views so the model/UI has a predictable shape
             const views = parse.data.map(toThingView);
             return { ok: true, data: views };
-          }); 
-
-          console.log("[App] registerFunction: Booking functions");          
-          registerFunction("booking_check_availability", async ({ tenant_id, unit_id, check_in, check_out }) => {
-            const url = `/api/booking/${tenant_id}/availability?` +
-                        new URLSearchParams({ unit_id, check_in, check_out }).toString();
-            const r = await fetch(url, { cache: "no-store" });
-            const j = await r.json();
-            if (!r.ok) return { ok: false, ...j };
-            return { ok: true, ...j };
-          });
-
-          registerFunction("booking_get_quote", async ({ tenant_id, unit_id, check_in, check_out }) => {
-            const url = `/api/booking/${tenant_id}/quote?` +
-                        new URLSearchParams({ unit_id, check_in, check_out }).toString();
-            const r = await fetch(url, { cache: "no-store" });
-            const j = await r.json();
-            if (!r.ok) return { ok: false, ...j };
-            return { ok: true, ...j };
-          });
-
-          registerFunction("booking_reserve", async ({ tenant_id, unit_id, check_in, check_out, guest }) => {
-            const r = await fetch(`/api/booking/${tenant_id}/reserve`, {
-              method: "POST",
-              headers: { "content-type": "application/json" },
-              body: JSON.stringify({ unit_id, check_in, check_out, guest })
-            });
-            const j = await r.json();
-            if (!r.ok) return { ok: false, ...j };
-            return { ok: true, ...j };
-          });
-
+          });          
 
         console.log("[App] CORE tools registration effect END");
          // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -219,57 +189,35 @@ const App: React.FC = () => {
           if (!tenantId) return;
 
           (async () => {
-            // 1) Clear tenant-scoped tools by namespace(s)
-            unregisterFunctionsByPrefix("action_");
-            unregisterFunctionsByPrefix("http_"); // if you name http tools with a prefix (optional)
+            // 1) Clear tenant-scoped tools by namespace(s)          
+            unregisterFunctionsByPrefix("http_"); // if you name http tools with a prefix (optional)            
 
-            /*
-              Optionally register ActionDoc based tools 
-              Evaluate this code block - are actions docs really needed?
-            
-            */
-            const actionToolDefs = await loadAndRegisterTenantActions({
-              tenantId,
-              coreTools,
-              systemPrompt: "placeholder",
-              registerFunction,
-              updateSession,           // not used, we set skipSessionUpdate: true
-              showOnStage,
-              hideStage,
-              maxTools: 60,            // leave room for http tools under 128 cap
-              preclear: {
-                prefix: "action_",
-                unregisterByPrefix: (prefix, keep) => unregisterFunctionsByPrefix(prefix, keep),
-              },
-              skipSessionUpdate: true,
-            }) || [];
-
-            // 3) Register HTTP tools + get their ToolDefs
+            // 2) Register HTTP tools + get their ToolDefs
             const httpToolDefs = await registerHttpToolsForTenant({
               tenantId,
               registerFunction,
+              showOnStage,
+              hideStage,
               cap: 64, // budget under the model cap
               fetchDescriptors: async () => {
-                const r = await fetch(`/api/actions/${tenantId}`, { cache: "no-store" });
-                const rows = (r.ok ? await r.json() : []) as any[];
-                // filter only kind === 'http_tool'
-                return rows.filter(x => x.kind === "http_tool");
+                const rows = await fetchTenantHttpTools(tenantId);              
+                // only returns 'http_tool'
+                return rows
               },
             });
 
-            // 4) Build instructions once (tenant prompt + all exposed tools)
+            // 3) Build instructions once (tenant prompt + all exposed tools)
             const { name: agentName, base } = selectPromptForTenant(
               tenantId,
               promptsJson as StructuredPrompt | StructuredPrompt[]
             );
             const exposedToolDefs: ToolDef[] = [
-              ...coreTools,
-              ...actionToolDefs,
+              ...coreTools,            
               ...httpToolDefs,
             ];
             const SYSTEM_PROMPT = buildInstructions(base, exposedToolDefs);
 
-            // 5) Single session update
+            // 4) Single session update
             updateSession({ tools: exposedToolDefs, instructions: SYSTEM_PROMPT });
 
             window.dispatchEvent(new CustomEvent("tool-registry-updated"));
@@ -278,9 +226,7 @@ const App: React.FC = () => {
           tenantId,
           coreTools,
           registerFunction,
-          updateSession,
-          showOnStage,
-          hideStage,
+          updateSession,          
           unregisterFunctionsByPrefix,
         ]);
 
