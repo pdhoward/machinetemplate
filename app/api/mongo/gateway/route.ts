@@ -78,49 +78,58 @@ function scanForDisallowedKeys(v: any, path: string[] = []): void {
 // --- Helpers ---------------------------------------------------------------
 
 // OPTIONAL: tidy filter — drop $regex with empty patterns, remove empty $or arrays
-function sanitizeFilter(filter: any) {
+function sanitizeFilter(filter: unknown) {
   if (!filter || typeof filter !== "object") return filter;
 
-  const walk = (obj: any) => {
-    if (!obj || typeof obj !== "object") return;
-
+  const walk = (obj: Record<string, unknown>) => {
     for (const [k, v] of Object.entries(obj)) {
-      if (v && typeof v === "object") {
-        // $regex pattern as string
-        if (k === "$regex" && typeof v === "string" && v.trim() === "") {
-          // Replace with a non-match or mark for deletion by parent
-          obj[k] = undefined;
-        } else {
-          walk(v);
+      // 1) Handle $regex as a string value (driver-style)
+      if (k === "$regex") {
+        if (typeof v === "string" && v.trim() === "") {
+          delete (obj as any)[k];
+          continue;
         }
+        // keep non-empty string or other accepted forms (RegExp, etc.)
+        continue;
+      }
+
+      // 2) Handle Atlas-style $regularExpression: { pattern, options }
+      if (k === "$regularExpression" && v && typeof v === "object") {
+        const pat = (v as any).pattern;
+        if (typeof pat === "string" && pat.trim() === "") {
+          delete (obj as any)[k];
+          continue;
+        }
+        // keep if non-empty; still descend into it in case there are nested bits
+        walk(v as Record<string, unknown>);
+        continue;
+      }
+
+      // 3) Recurse into nested objects/arrays
+      if (v && typeof v === "object") {
+        walk(v as Record<string, unknown>);
       }
     }
 
-    // Clean up undefined keys created above
-    for (const key of Object.keys(obj)) {
-      if (obj[key] === undefined) delete obj[key];
-    }
-
-    // Remove empty $or
-    if (Array.isArray(obj.$or)) {
-      obj.$or = obj.$or
-        .map((clause: any) => {
-          // remove $regex "" within each clause
+    // 4) Remove empty $or clauses ([], [{}], etc.)
+    if (Array.isArray((obj as any).$or)) {
+      (obj as any).$or = (obj as any).$or
+        .map((clause: unknown) => {
           if (clause && typeof clause === "object") {
-            walk(clause);
-            return Object.keys(clause).length === 0 ? null : clause;
+            walk(clause as Record<string, unknown>);
+            return Object.keys(clause as Record<string, unknown>).length > 0 ? clause : null;
           }
           return clause;
         })
         .filter(Boolean);
-
-      if (obj.$or.length === 0) delete obj.$or;
+      if ((obj as any).$or.length === 0) delete (obj as any).$or;
     }
   };
 
-  walk(filter);
+  walk(filter as Record<string, unknown>);
   return filter;
 }
+
 
 function coerceLimit(requested: number | undefined, fallback = 100, max = 500) {
   const n = typeof requested === "number" ? requested : fallback;
