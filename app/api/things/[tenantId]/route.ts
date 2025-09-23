@@ -1,28 +1,24 @@
-// app/api/things/[tenantId]/route.ts
+
+// ==========================
+// app/api/things/[tenantId]/route.ts (refactored)
+// Thin wrapper that keeps your current /things route behavior but
+// uses safer query parsing and can be migrated to the gateway internally later.
+// ==========================
+
 import { NextRequest, NextResponse } from "next/server";
-import getMongoConnection from "@/db/connections";
+import getMongoConnection2 from "@/db/connections";
 import { z } from "zod";
 import { ThingBaseSchema, ThingsQuerySchema } from "@/types/things.schema";
 
 const ThingsArray = z.array(ThingBaseSchema);
 
-// Build a safe query object from parsed params
 function buildFilter(tenantId: string, q: z.infer<typeof ThingsQuerySchema>) {
   const filter: Record<string, any> = { tenantId };
 
-  // Prefer status=active over non-existent `enabled: true`
-  // Only apply if the doc uses `status` (it's optional in schema)
-  if (q.searchable !== undefined) {
-    filter.searchable = q.searchable;
-  }
-
-  // If you want only "active" by default, add it:
+  if (q.searchable !== undefined) filter.searchable = q.searchable;
   filter.status = "active"; // default; remove if you want *all* statuses by default
 
-  if (q.type) {
-    filter.type = q.type;
-  }
-
+  if (q.type) filter.type = q.type;
   if (q.q) {
     const rx = new RegExp(q.q, "i");
     filter.$or = [
@@ -37,53 +33,46 @@ function buildFilter(tenantId: string, q: z.infer<typeof ThingsQuerySchema>) {
   return filter;
 }
 
-export async function GET(
-  req: NextRequest,
-  ctx: { params: Promise<{ tenantId: string }> }
-) {
+export async function GET(req: NextRequest, ctx: { params: Promise<{ tenantId: string }> }) {
   try {
     const { tenantId } = await ctx.params;
 
-    // read & validate query string
     const sp = req.nextUrl.searchParams;
+    const pick = (k: string) => {
+      const v = sp.get(k);
+      return v && v.trim() !== "" ? v : undefined;
+    };
+
     const parse = ThingsQuerySchema.safeParse({
-      type: sp.get("type") ?? undefined,
-      q: sp.get("q") ?? undefined,
-      limit: sp.get("limit") ?? undefined,
-      searchable: sp.get("searchable") ?? undefined,
+      type: pick("type"),
+      q: pick("q"),
+      limit: pick("limit"),
+      searchable: pick("searchable"),
     });
 
     if (!parse.success) {
-      return NextResponse.json(
-        { error: "Invalid query", issues: parse.error.issues },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Invalid query", issues: parse.error.issues }, { status: 400 });
     }
 
     const q = parse.data;
+    const limit = Math.min(q.limit ?? 100, 500);
 
-    // defaults
-    const limit = Math.min(q.limit ?? 100, 500); // default 100, max 500
-
-    const { db } = await getMongoConnection(process.env.DB!, process.env.MAINDBNAME!);
+    const { db } = await getMongoConnection2(process.env.DB!, process.env.MAINDBNAME!);
 
     const filter = buildFilter(tenantId, q);
 
-    const cursor = db.collection("things")
+    const cursor = db
+      .collection("things")
       .find(filter)
       .project({ _id: 0 })
-      .sort({ updatedAt: -1 })   // newest first
+      .sort({ updatedAt: -1 })
       .limit(limit);
 
     const docs = await cursor.toArray();
 
-    // Optional: validate server output (skip if perf sensitive)
-    // If it ever throws during dev, you’ll know a doc is malformed.
-    // In prod, you might switch to .safeParse and log instead.
     try {
       ThingsArray.parse(docs);
     } catch (e) {
-      // don’t fail the request, but surface the issue
       console.warn("[/api/things] Schema mismatch:", e);
     }
 

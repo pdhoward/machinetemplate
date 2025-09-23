@@ -8,6 +8,9 @@ export type ToolDef = {
 // visual surface
 
 export const coreTools: ToolDef[] = [ 
+   // --------------------------------------------------------------------------
+  // Visuals
+  // --------------------------------------------------------------------------
   {
     type: "function",
     name: "show_component",
@@ -25,56 +28,105 @@ export const coreTools: ToolDef[] = [
       required: ["component_name"],
       additionalProperties: true,
     },
-  },
+  },  
+   // --------------------------------------------------------------------------
+  // Local utility tools (mapped via nameMap in your App)
+  // --------------------------------------------------------------------------
 
-  // data-driven action executor
+  // timeFunction -> "getCurrentTime"
   {
     type: "function",
-    name: "execute_action",
-    description: "Execute a high-level business action by id.",
+    name: "getCurrentTime",
+    description:
+      'Returns the current local time and timezone. Example prompt: "What time is it right now?"',
     parameters: {
       type: "object",
-      properties: {
-        action_id: { type: "string", description: "Action identifier (e.g., 'book_stay')" },
-        input:     { type: "object", description: "Payload for this action" },
-      },
-      required: ["action_id"],
+      properties: {},
       additionalProperties: false,
     },
   },
 
-  // reader for catalog-like items 
+  // backgroundFunction -> "changeBackgroundColor"
   {
     type: "function",
-    name: "list_things",
-    description: "Browse available 'things' with optional filtering and search.",
+    name: "changeBackgroundColor",
+    description:
+      'Toggles between light and dark themes for the UI. Example: "Switch to dark mode" or "Change background."',
     parameters: {
       type: "object",
-      properties: {
-        type: { type: "string", description: "Filter by thing type (e.g., 'unit', 'spa_treatment')." },
-        q:    { type: "string", description: "Free-text search in name/title/description/tags." },
-        limit:{ type: "number", description: "Max results (default 100, max 500)." }
-      },
-      additionalProperties: false
+      properties: {},
+      additionalProperties: false,
     },
   },
 
-
-  // optional fallback: let the model call your server supervisor
+  // partyFunction -> "partyMode"
   {
     type: "function",
-    name: "getReservations",
-    description: "Reservations supervisor agent (fallback).",
+    name: "partyMode",
+    description:
+      'Triggers a short confetti + color animation for celebration. Example: "Start party mode!".',
+    parameters: {
+      type: "object",
+      properties: {},
+      additionalProperties: false,
+    },
+  },
+
+  // launchWebsite -> "launchWebsite"
+  {
+    type: "function",
+    name: "launchWebsite",
+    description:
+      'Opens a website in a new browser tab. Example: "Take me to https://example.com".',
     parameters: {
       type: "object",
       properties: {
-        relevantContextFromLastUserMessage: {
+        url: {
           type: "string",
-          description: "Key info from the user’s most recent message"
+          description: "Absolute URL to open (must start with http/https).",
+          pattern: "^(https?:)\\/\\/",
         },
       },
-      required: ["relevantContextFromLastUserMessage"],
+      required: ["url"],
       additionalProperties: false,
     },
   },
+
+  // copyToClipboard -> "copyToClipboard"
+  {
+    type: "function",
+    name: "copyToClipboard",
+    description:
+      'Copies text to the user’s clipboard. Example: "Copy this confirmation code."',
+    parameters: {
+      type: "object",
+      properties: {
+        text: { type: "string", description: "Plain text to copy.", minLength: 1 },
+      },
+      required: ["text"],
+      additionalProperties: false,
+    },
+  },
+
+  // scrapeWebsite -> "scrapeWebsite"
+  {
+    type: "function",
+    name: "scrapeWebsite",
+    description:
+      'Fetches and returns website content for analysis/summarization. Examples: "fetch example.com/blog and summarize the articles." or "fetch the site strategicmachines.ai and tell me about their products" or "scrape the site data.gov and tell me whats new".',
+    parameters: {
+      type: "object",
+      properties: {
+        url: {
+          type: "string",
+          description: "Publicly reachable absolute URL (http/https) to scrape.",
+          pattern: "^(https?:)\\/\\/",
+        },
+      },
+      required: ["url"],
+      additionalProperties: false,
+    },
+  },
+
+
 ];

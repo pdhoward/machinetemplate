@@ -1,6 +1,6 @@
 // lib/realtime
-// A tiny, focused wrapper around native WebRTC for OpenAI Realtime.
-// No React here. Pure browser APIs + typed callbacks.
+// A tiny, focused wrapper for OpenAI Realtime.
+// Pure browser APIs + typed callbacks.
 
 export type Role = "user" | "assistant" | "system";
 export type SessionStatus = "DISCONNECTED" | "CONNECTING" | "CONNECTED" | "ERROR";

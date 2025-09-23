@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
-import { tools as builtinTools } from "@/lib/basictools";
+
 import { useRealtime } from '@/context/realtime-context';
+import { useTenant } from "@/context/tenant-context";
 
 import Visualizer from "@/components/visualizer";
 import VisualStageHost, { VisualStageHandle } from "@/components/visual-stage-host";
@@ -20,20 +21,18 @@ import { motion } from "framer-motion";
 import { useToolsFunctions } from "@/hooks/use-tools";
 import {Diagnostics} from "@/components/diagnostics"
 
-import { loadAndRegisterTenantActions } from "@/lib/agent/registerActions";
 import { fetchTenantHttpTools } from "@/lib/registry/fetchTenantTools";
 
-import { useTenant } from "@/context/tenant-context";
 import { registerHttpToolsForTenant } from "@/lib/agent/registerTenantHttpTools";
 import type {ToolDef} from "@/types/tools"
-import { coreTools } from "@/types/tools";  // 
+import { coreTools } from "@/types/tools";  
 
 import { ThingArraySchema } from "@/types/things.schema";
 import { toThingView } from "@/lib/things/view";
 
 import promptsJson from "@/promptlibrary/prompts.json"
 import { selectPromptForTenant, buildInstructions } from "@/lib/agent/prompts";
-import type { PromptDoc, StructuredPrompt } from "@/types/prompt";
+import type { StructuredPrompt } from "@/types/prompt";
  
 
 // --- tool schema you expose to the model ---
@@ -59,8 +58,6 @@ const App: React.FC = () => {
   const [timer, setTimer] = useState<number>(0);
   const [componentName, setComponentName] = useState<string | null>(null);
   const [isMuted, setIsMuted] = useState(false); 
-
-  const agentTools = useMemo(() => [...defaultTools, ...builtinTools], []);
 
   const toolsFunctions = useToolsFunctions(); ///set of locally defined tools in hook
   
@@ -102,14 +99,14 @@ const App: React.FC = () => {
     getClient,
   } = useRealtime();
   
-   // Bind callbacks that depend on local refs/state
-  useEffect(() => {
-    setCallbacks({
-      onShowComponent: (name: string) => {
-        stageRef.current?.show?.({ component_name: name });
-      },
-    });
-  }, [setCallbacks]);
+    // Bind callbacks that depend on local refs/state
+    useEffect(() => {
+      setCallbacks({
+        onShowComponent: (name: string) => {
+          stageRef.current?.show?.({ component_name: name });
+        },
+      });
+    }, [setCallbacks]);
 
     // Push initial agent config and whenever it changes
      useEffect(() => {
@@ -119,7 +116,8 @@ const App: React.FC = () => {
     // register the local set of tools once
     useEffect(() => {
       console.log("[App] tools registration effect START");
-      // localName (your hook keys) -> tool name in the model schema
+
+      // localName for Toolbox functions -> tool name in the model schema
       const nameMap: Record<string, string> = {
         timeFunction: "getCurrentTime",
         backgroundFunction: "changeBackgroundColor",
@@ -149,36 +147,36 @@ const App: React.FC = () => {
           return { ok: true };
         });       
 
-        // list_things
-        console.log("[App] registerFunction: list_things");
-        registerFunction("list_things", async ({ type, q, limit }: { type?: string; q?: string; limit?: number }) => {
-            const params = new URLSearchParams();
-            if (type) params.set("type", type);
-            if (q) params.set("q", q);
-            if (limit) params.set("limit", String(limit));
+        // // list_things
+        // console.log("[App] registerFunction: list_things");
+        // registerFunction("list_things", async ({ type, q, limit }: { type?: string; q?: string; limit?: number }) => {
+        //     const params = new URLSearchParams();
+        //     if (type) params.set("type", type);
+        //     if (q) params.set("q", q);
+        //     if (limit) params.set("limit", String(limit));
 
-            const r = await fetch(`/api/things/${tenantId}?${params.toString()}`, { cache: "no-store" });
-            if (!r.ok) {
-              return { ok: false, error: `HTTP ${r.status}` };
-            }
+        //     const r = await fetch(`/api/things/${tenantId}?${params.toString()}`, { cache: "no-store" });
+        //     if (!r.ok) {
+        //       return { ok: false, error: `HTTP ${r.status}` };
+        //     }
 
-            const json = await r.json();
+        //     const json = await r.json();
 
-            // Validate on the client (optional but nice)
-            const parse = ThingArraySchema.safeParse(json);
-            if (!parse.success) {
-              console.warn("[list_things] schema mismatch:", parse.error.issues);
-              // still return raw if you prefer:
-              return { ok: true, data: json };
-            }
+        //     // Validate on the client (optional but nice)
+        //     const parse = ThingArraySchema.safeParse(json);
+        //     if (!parse.success) {
+        //       console.warn("[list_things] schema mismatch:", parse.error.issues);
+        //       // still return raw if you prefer:
+        //       return { ok: true, data: json };
+        //     }
 
-            // Option A: return raw docs (model can “speak” any field)
-            // return { ok: true, data: parse.data };
+        //     // Option A: return raw docs (model can “speak” any field)
+        //     // return { ok: true, data: parse.data };
 
-            // Option B: return normalized views so the model/UI has a predictable shape
-            const views = parse.data.map(toThingView);
-            return { ok: true, data: views };
-          });          
+        //     // Option B: return normalized views so the model/UI has a predictable shape
+        //     const views = parse.data.map(toThingView);
+        //     return { ok: true, data: views };
+        //   });          
 
         console.log("[App] CORE tools registration effect END");
          // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -215,7 +213,7 @@ const App: React.FC = () => {
               ...coreTools,            
               ...httpToolDefs,
             ];
-            const SYSTEM_PROMPT = buildInstructions(base, exposedToolDefs);
+            const SYSTEM_PROMPT = buildInstructions(base, exposedToolDefs);           
 
             // 4) Single session update
             updateSession({ tools: exposedToolDefs, instructions: SYSTEM_PROMPT });

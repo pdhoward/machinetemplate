@@ -1,6 +1,6 @@
 // src/app/api/tools/execute/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { tpl, applyTemplate } from "@/lib/utils";
+import { tpl, applyTemplate, pruneEmpty } from "@/lib/utils";
 
 // Replace with your real secret store (KMS, Vault, Mongo per-tenant, etc.)
 function resolveSecret(path: string, tenantId?: string): string {
@@ -16,82 +16,60 @@ export async function POST(req: NextRequest) {
   try {
     const { descriptor, args } = await req.json();
 
-    if (!descriptor?.http?.urlTemplate) {
-      return NextResponse.json(
-        { ok: false, error: "Missing descriptor.http.urlTemplate" },
-        { status: 400 }
-      );
-    }
-
     const tenantId: string | undefined = args?.tenant_id;
 
-    // Build ctx with args + secret proxy
-    const secretsProxy = new Proxy(
-      {},
-      {
-        get(_t, prop: string) {
-          // supports {{secrets.something}}
-          return resolveSecret(`secrets.${String(prop)}`, tenantId);
-        },
-      }
+    const secretsProxy = new Proxy({}, {
+      get(_t, prop: string) {
+        return resolveSecret(`secrets.${String(prop)}`, tenantId);
+      },
+    });
+
+    const ctx = { ...args, args, secrets: secretsProxy }; // include args under ctx.args too (handy for UI templates)
+
+    const method = descriptor?.http?.method ?? "POST";
+    const rawUrl = String(descriptor.http.urlTemplate || "");
+    const templatedUrl = tpl(rawUrl, ctx);
+
+    // ✅ If relative (starts with “/”), make it absolute using the incoming request’s host/proto
+    const proto = req.headers.get("x-forwarded-proto") ?? "http";
+    const host  = req.headers.get("host") ?? "localhost";
+    const url = /^(?:https?:)?\/\//.test(templatedUrl)
+      ? templatedUrl
+      : new URL(templatedUrl, `${proto}://${host}`).toString();
+
+    const headers = Object.fromEntries(
+      Object.entries(descriptor.http.headers ?? {}).map(([k, v]) => [k, tpl(String(v), ctx)])
     );
 
-    const ctx = { ...args, secrets: secretsProxy };
+    let body: string | undefined;
+    if (descriptor.http.jsonBodyTemplate != null) {
+      let bodyObj = applyTemplate(descriptor.http.jsonBodyTemplate, ctx);
 
-    const method = (descriptor.http.method ?? "POST").toUpperCase();
+      // Optional: prune empties if you adopt this flag on descriptors
+      if (descriptor.http.pruneEmpty) {
+        bodyObj = pruneEmpty(bodyObj);
+      }
 
-    // Template URL + headers + body safely
-    const rawUrl = String(descriptor.http.urlTemplate);
-    const url = tpl(rawUrl, ctx);
-
-    // Sanity-check: ensure no braces remain (bad template)
-    if (/\{[^}]*\}/.test(url) || /\{\{[^}]*\}\}/.test(url)) {
-      return NextResponse.json(
-        { ok: false, error: `Unresolved template vars in URL: "${url}"` },
-        { status: 400 }
-      );
+      body = JSON.stringify(bodyObj);
     }
 
-    // Headers (template each value)
-    const rawHeaders = descriptor.http.headers ?? {};
-    const headersEntries = Object.entries(rawHeaders).map(([k, v]) => [k, tpl(String(v), ctx)]);
-    // drop empty header values
-    const headers = Object.fromEntries(headersEntries.filter(([_, v]) => v != null && v !== ""));
-
-    // GET should not send body
-    let body: string | undefined = undefined;
-    if (method !== "GET" && descriptor.http.jsonBodyTemplate != null) {
-      const templated = applyTemplate(descriptor.http.jsonBodyTemplate, ctx);
-      body = JSON.stringify(templated);
-      // set content-type only when we actually send a body
-      if (!headers["content-type"]) headers["content-type"] = "application/json";
-    } else {
-      // ensure we don't force content-type on GET
-      if (method === "GET" && headers["content-type"]) delete headers["content-type"];
-    }
-
-    // Timeout
     const controller = new AbortController();
-    const timeoutMs = Number(descriptor.http.timeoutMs ?? 15000);
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const timeout = setTimeout(
+      () => controller.abort(),
+      descriptor.http.timeoutMs ?? 15_000
+    );
 
-    let res: Response;
-    try {
-      res = await fetch(url, { method, headers, body, signal: controller.signal });
-    } finally {
-      clearTimeout(timer);
-    }
+    const r = await fetch(url, { method, headers, body, signal: controller.signal });
+    clearTimeout(timeout);
 
-    // Pass-through status; attempt JSON, fallback to text
-    const text = await res.text();
+    const text = await r.text();
     try {
-      const json = JSON.parse(text);
-      return NextResponse.json(json, { status: res.status });
+      const j = JSON.parse(text);
+      return NextResponse.json(j, { status: r.status });
     } catch {
-      return new NextResponse(text, { status: res.status });
+      return new NextResponse(text, { status: r.status });
     }
   } catch (err: any) {
-    console.error("[/api/tools/execute] error:", err?.stack || err?.message || err);
     return NextResponse.json({ ok: false, error: String(err?.message || err) }, { status: 500 });
   }
 }
