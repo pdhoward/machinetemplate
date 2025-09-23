@@ -82,6 +82,9 @@ function buildHttpExecutorViaProxy(
 
   return async (args: Record<string, any>) => {
     // Hit the server route so secrets stay server-side.
+    const clientTraceId = `client_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    console.log(`[registerTenantHttpTools - TOOL] ${clientTraceId} call`, { tool: descr.name, args });
+
     const r = await fetch(`/api/tools/execute`, {
       method: "POST",
       headers: { "content-type": "application/json" },
