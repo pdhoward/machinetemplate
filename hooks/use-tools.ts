@@ -136,16 +136,40 @@ export const useToolsFunctions = () => {
     }
   }
 
-  const launchWebsite = ({ url }: { url: string }) => {
-    window.open(url, '_blank')
-    toast(t('tools.launchWebsite') + " 🌐", {
-      description: t('tools.launchWebsiteSuccess') + url + ", tell the user it's been launched.",
-    })
-    return {
-      success: true,
-      message: `Launched the site${url}, tell the user it's been launched.`
+ const launchWebsite = ({ url }: { url: string }) => {
+    try {
+      // Ensure the URL is valid and properly formatted
+      const formattedUrl = url.startsWith('http://') || url.startsWith('https://') ? url : `https://${url}`;
+
+      // Attempt to open the URL in a new tab
+      const newWindow = window.open(formattedUrl, '_blank');
+
+      // Check if the window was blocked or failed to open
+      if (!newWindow) {
+        throw new Error('Window blocked or failed to open');
+      }
+
+      // Show success toast
+      toast(t('tools.launchWebsite') + " 🌐", {
+        description: t('tools.launchWebsiteSuccess') + formattedUrl + ", tell the user it's been launched.",
+      });
+
+      return {
+        success: true,
+        message: `Launched the site ${formattedUrl}, tell the user it's been launched.`,
+      };
+    } catch (error: any) {
+      // Show error toast if window.open fails
+      toast.error(t('tools.launchWebsiteError'), {
+        description: `Failed to launch ${url}. Please check your pop-up blocker or URL validity.`,
+      });
+
+      return {
+        success: false,
+        message: `Failed to launch the site ${url}: ${error.message}`,
+      };
     }
-  }
+  };
 
   const copyToClipboard = ({ text }: { text: string }) => {
     navigator.clipboard.writeText(text)
@@ -160,35 +184,45 @@ export const useToolsFunctions = () => {
   }
 
   const scrapeWebsite = async ({ url }: { url: string }) => {
-    const apiKey = process.env.NEXT_PUBLIC_FIRECRAWL_API_KEY;
-    try {
-      const app = new FirecrawlApp({ apiKey: apiKey });
-      const scrapeResult = await app.scrapeUrl(url, { formats: ['markdown', 'html'] }) as ScrapeResponse;
+  const apiKey = process.env.NEXT_PUBLIC_FIRECRAWL_API_KEY;
+  try {
+    // Show fetching toast message
+    toast.loading(t('tools.scrapeWebsite.fetching'), {
+      id: 'scrape-loading', // Unique ID to manage the toast
+    });
 
-      if (!scrapeResult.success) {
-        console.log(scrapeResult.error)
-        return {
-          success: false,
-          message: `Failed to scrape: ${scrapeResult.error}`
-        };
-      }
+    const app = new FirecrawlApp({ apiKey: apiKey });
+    const scrapeResult = await app.scrapeUrl(url, { formats: ['markdown', 'html'] }) as ScrapeResponse;
 
-      toast.success(t('tools.scrapeWebsite.toast') + " 📋", {
-        description: t('tools.scrapeWebsite.success'),
-      })
-    
-      return {
-        success: true,
-        message: "Here is the scraped website content: " + JSON.stringify(scrapeResult.markdown) + "Summarize and explain it to the user now in a response."
-      };
-
-    } catch (error) {
+    if (!scrapeResult.success) {
+      // Dismiss the loading toast
+      toast.dismiss('scrape-loading');
+      console.log(scrapeResult.error);
       return {
         success: false,
-        message: `Error scraping website: ${error}`
+        message: `Failed to scrape: ${scrapeResult.error}`,
       };
     }
+
+    // Dismiss the loading toast and show success toast
+    toast.dismiss('scrape-loading');
+    toast.success(t('tools.scrapeWebsite.toast'), {
+      description: t('tools.scrapeWebsite.success'),
+    });
+
+    return {
+      success: true,
+      message: `Here is the scraped website content: ${JSON.stringify(scrapeResult.markdown)} Summarize and explain it to the user now in a response.`,
+    };
+  } catch (error) {
+    // Dismiss the loading toast on error
+    toast.dismiss('scrape-loading');
+    return {
+      success: false,
+      message: `Error scraping website: ${error}`,
+    };
   }
+};
 
   return {
     timeFunction,

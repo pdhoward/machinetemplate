@@ -87,7 +87,10 @@ function buildHttpExecutorViaProxy(
 
     const r = await fetch(`/api/tools/execute`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { 
+        "content-type": "application/json",
+        "x-trace-id": clientTraceId, // correlate with server logs if needed
+      },
       body: JSON.stringify({ descriptor: descr, args }),
     });
 

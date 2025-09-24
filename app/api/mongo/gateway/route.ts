@@ -16,6 +16,12 @@ const JsonValue: z.ZodType<any> = z.lazy(() =>
   z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(JsonValue), z.record(JsonValue)])
 );
 
+// helper
+const CoercedLimit = z.preprocess(
+  (v) => (v === "" || v == null ? undefined : v),
+  z.coerce.number().int().min(1).max(500).optional()
+);
+
 // --- Request schemas --------------------------------------------------------
 
 const DbTargetSchema = z.object({
@@ -30,7 +36,7 @@ const FindReqSchema = z.object({
   filter: JsonValue.optional(),
   projection: JsonValue.optional(),
   sort: JsonValue.optional(),
-   limit: z.coerce.number().int().min(1).max(500).optional(),
+  limit: CoercedLimit, 
 });
 
 const AggregateReqSchema = z.object({
@@ -38,7 +44,7 @@ const AggregateReqSchema = z.object({
   tenantId: z.string().min(1),
   db: DbTargetSchema,
   pipeline: z.array(JsonValue).min(1),
-  limit: z.coerce.number().int().min(1).max(500).optional(),
+  limit: CoercedLimit, 
 });
 
 const GatewaySchema = z.discriminatedUnion("op", [FindReqSchema, AggregateReqSchema]);
@@ -77,46 +83,78 @@ function scanForDisallowedKeys(v: any, path: string[] = []): void {
 
 // --- Helpers ---------------------------------------------------------------
 
-// OPTIONAL: tidy filter — drop $regex with empty patterns, remove empty $or arrays
+// drop empty regexes, remove orphan $options, clean empty $or clauses and empty-string leaves
 function sanitizeFilter(filter: unknown) {
   if (!filter || typeof filter !== "object") return filter;
 
-  const walk = (obj: Record<string, unknown>) => {
-    for (const [k, v] of Object.entries(obj)) {
-      // 1) Handle $regex as a string value (driver-style)
-      if (k === "$regex") {
-        if (typeof v === "string" && v.trim() === "") {
-          delete (obj as any)[k];
-          continue;
-        }
-        // keep non-empty string or other accepted forms (RegExp, etc.)
-        continue;
+  // Remove $options when there is no sibling $regex (handles order-insensitive cases)
+  const cleanRegexContainer = (o: Record<string, unknown>) => {
+    // If $regex is a blank string, delete it
+    if ("$regex" in o) {
+      const rv = (o as any)["$regex"];
+      if (typeof rv === "string" && rv.trim() === "") {
+        delete (o as any)["$regex"];
       }
+    }
+    // If there’s no $regex at all, $options is meaningless → delete it
+    if (!("$regex" in o) && "$options" in o) {
+      delete (o as any)["$options"];
+    }
+  };
 
-      // 2) Handle Atlas-style $regularExpression: { pattern, options }
+  const walk = (obj: Record<string, unknown>) => {
+    // Clean current container first so order of keys never matters
+    cleanRegexContainer(obj);
+
+    for (const [k, v] of Object.entries(obj)) {
+      // Atlas-style $regularExpression: { pattern, options }
       if (k === "$regularExpression" && v && typeof v === "object") {
         const pat = (v as any).pattern;
         if (typeof pat === "string" && pat.trim() === "") {
           delete (obj as any)[k];
           continue;
         }
-        // keep if non-empty; still descend into it in case there are nested bits
         walk(v as Record<string, unknown>);
+        cleanRegexContainer(v as Record<string, unknown>);
+        if (Object.keys(v as Record<string, unknown>).length === 0) {
+          delete (obj as any)[k];
+        }
         continue;
       }
 
-      // 3) Recurse into nested objects/arrays
+      // $in: ["", ...] -> remove empty strings; drop $in if empty after cleanup
+      if (k === "$in" && Array.isArray(v)) {
+        const cleaned = v.filter((x) => !(typeof x === "string" && x.trim() === ""));
+        if (cleaned.length) (obj as any).$in = cleaned;
+        else delete (obj as any).$in;
+        continue;
+      }
+
+      // Generic leaf cleanup: drop empty strings (keep 0/false)
+      if (typeof v === "string" && v.trim() === "") {
+        delete (obj as any)[k];
+        continue;
+      }
+
+      // Recurse
       if (v && typeof v === "object") {
         walk(v as Record<string, unknown>);
+        cleanRegexContainer(v as Record<string, unknown>);
+
+        // If child became empty after cleanup, remove it
+        if (Object.keys(v as Record<string, unknown>).length === 0) {
+          delete (obj as any)[k];
+        }
       }
     }
 
-    // 4) Remove empty $or clauses ([], [{}], etc.)
+    // Prune empty $or ([], [{}], objects that ended up empty or only had orphan $options)
     if (Array.isArray((obj as any).$or)) {
       (obj as any).$or = (obj as any).$or
         .map((clause: unknown) => {
           if (clause && typeof clause === "object") {
             walk(clause as Record<string, unknown>);
+            cleanRegexContainer(clause as Record<string, unknown>);
             return Object.keys(clause as Record<string, unknown>).length > 0 ? clause : null;
           }
           return clause;
@@ -161,30 +199,39 @@ export async function POST(req: NextRequest) {
     const { db } = await getMongoConnection(uri, input.db.dbName || defaultDb);
 
     if (input.op === "find") {
-      const limit = coerceLimit(input.limit);
-      const filter = sanitizeFilter(input.filter ?? {});
-      scanForDisallowedKeys(filter);
+        const limit = coerceLimit(input.limit);
 
-      console.log(`[GATEWAY] ${traceId} op=find`, {
-        tenantId: input.tenantId,
-        coll: input.db.collection,
-        limit,
-        filter,
-        projection: input.projection,
-        sort: input.sort,
-      });
+        // keep a copy for debugging
+        const rawFilter = input.filter ?? {};
 
-      const cursor = db
-        .collection(input.db.collection)
-        .find(filter)
-        .project(input.projection ?? undefined)
-        .sort(input.sort ?? undefined)
-        .limit(limit);
+        // sanitize & guard
+        const filter = sanitizeFilter(rawFilter);
+        scanForDisallowedKeys(filter);
 
-      const docs = await cursor.toArray();
-      console.log(`[GATEWAY] ${traceId} result_count=${docs.length}`);
-      return NextResponse.json(docs, { status: 200 });
-    }
+        // GOOD: structured overview (may still show nested objects as [Object])
+        console.log(`[GATEWAY] ${traceId} op=find`, {
+          tenantId: input.tenantId,
+          coll: input.db.collection,
+          limit,
+          projection: input.projection,
+          sort: input.sort,
+        });
+
+        // BETTER: full JSON snapshots so you can verify orphan $options are gone
+        console.log(`[GATEWAY] ${traceId} raw_filter`, JSON.stringify(rawFilter));
+        console.log(`[GATEWAY] ${traceId} sanitized_filter`, JSON.stringify(filter));
+
+        const coll = db.collection(input.db.collection) as any;
+        const cursor = coll.find(filter as any, {
+          projection: (input.projection ?? undefined) as any,
+          sort:       (input.sort ?? undefined) as any,
+        }).limit(limit);
+
+        const docs = await cursor.toArray();
+        console.log(`[GATEWAY] ${traceId} result_count=${docs.length}`);
+        return NextResponse.json(docs, { status: 200 });
+      }
+
 
     if (input.op === "aggregate") {
       const limit = coerceLimit(input.limit);

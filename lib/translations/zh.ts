@@ -6,15 +6,15 @@ export const zh = {
     },
     header: {
         title: "关于",
-        about: "这是一个旨在演示如何在现代 Next 15 项目中使用 OpenAI 实时 API 和 WebRTC 的项目。它已安装了 shadcn/ui 组件并实现了 WebRTC 音频会话钩子。克隆项目并定义您自己的工具。",
-        banner: "🎉 快来看看全新的 Next.js OpenAI 实时块用户界面库！",
+        about: "具有各种超能力的语音代理画廊.",
+        banner: "🎉 商业语音代理",
         bannerLink: "了解更多 →",
         beta: "测试版",
         dark: "深色",
         github: "在 GitHub 上标星",
         language: "语言",
         light: "浅色",
-        logo: "OpenAI 实时启动器",
+        logo: "战略机器",
         system: "系统",
         theme: "切换主题",
         twitter: "在推特上关注"
@@ -95,6 +95,7 @@ export const zh = {
         time: "向用户播报：当前时间是 ",
         scrapeWebsite: {
             success: "网页内容提取成功",
+            fetching: " 正在获取网站内容。请稍等一分钟...",
             description: "网页内容提取失败",
             toast: "正在提取网页内容..."
         }

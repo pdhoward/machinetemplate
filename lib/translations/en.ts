@@ -96,6 +96,7 @@ export const en = {
         time: "Announce to user: The current time and date is ",
         scrapeWebsite: {
             success: "Website content extracted successfully",
+            fetching: "Fetching website content now. One minute please",
             description: "Failed to scrape website content",
             toast: "Scraping website..."
         }

@@ -29,7 +29,11 @@ export function Header() {
           transition={{ delay: 0.2 }}
           className="max-md:hidden flex items-center"
         >
-          <Link href="/" className="flex gap-3 items-center">
+          <Link 
+            href="https://www.strategicmachines.ai/" 
+            className="flex gap-3 items-center"
+            target="_blank"
+            >
             <motion.h1
               className="text-lg font-medium tracking-tighter flex gap-1 items-center"
               whileHover={{ scale: 1.02 }}

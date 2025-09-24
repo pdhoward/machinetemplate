@@ -23,6 +23,7 @@ export const HttpConfigSchema = z.object({
   jsonBodyTemplate: JsonValue.optional(),
   okField: z.string().optional(),
   timeoutMs: z.number().int().positive().max(120_000).optional(),
+  pruneEmpty: z.boolean().optional()
 });
 
 export const HttpToolDescriptorSchema = z.object({
