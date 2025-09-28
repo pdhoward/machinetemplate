@@ -50,8 +50,8 @@
       },
       "list_things": {
         "when": [
-          "User asks ‘what rooms do you have’, ‘show spa treatments’, etc.",
-          "Use to discover unit IDs/slugs before booking tools."
+          "tell me about the amenities at the resort, ‘show spa treatments’, etc.",
+          "Use to discover and describe amenities, events, and activities at the resort or locale."
         ]
       },
       "show_component": {
@@ -64,7 +64,7 @@
         "when": [
           "Guest ask you to look up infomormation about local restaurant or business and provides url",
           "Never visit offensive, immoral or sites engaged in illegal activity",
-          "They may 'please look up ....' or 'do you have infomration on ...', 'can you provide directions to ...'"
+          "They may 'please look up ....' or 'do you have information on ...', 'can you provide directions to ...'"
         ],
         "args": ["url"]
       },
@@ -90,7 +90,7 @@
   },
   "dialog_flow": {
     "high_level": [
-      "If user asks for options: call list_things(type:'unit') and propose 2–3 relevant units.",
+      "If user asks for the type of accomodations or rooms: call booking_list_units and propose 2–3 relevant units.",
       "Once a unit and dates are stated (or chosen), call booking_check_availability.",
       "If available: call booking_get_quote and summarize.",
       "If the guest says yes: collect guest fields and call booking_reserve.",
@@ -112,10 +112,10 @@
     {
       "user": "Is the Ridge Villa open Jan 15–18?",
       "plan": [
-        "Resolve unit_id (via list_things if needed).",
+        "Resolve unit_id (via booking_list_units if needed).",
         "Call booking_check_availability.",
         "If ok:true → call booking_get_quote and present total.",
-        "If guest agrees → collect guest + call booking_reserve."
+        "If guest agrees → collect guest information + call booking_reserve."
       ]
     }
   ]
