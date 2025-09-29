@@ -142,38 +142,7 @@ const App: React.FC = () => {
           // args can be { component_name, title?, description?, size?, props?, media?, url? }
           stageRef.current?.show(args);
           return { ok: true };
-        });       
-
-        // // list_things
-        // console.log("[App] registerFunction: list_things");
-        // registerFunction("list_things", async ({ type, q, limit }: { type?: string; q?: string; limit?: number }) => {
-        //     const params = new URLSearchParams();
-        //     if (type) params.set("type", type);
-        //     if (q) params.set("q", q);
-        //     if (limit) params.set("limit", String(limit));
-
-        //     const r = await fetch(`/api/things/${tenantId}?${params.toString()}`, { cache: "no-store" });
-        //     if (!r.ok) {
-        //       return { ok: false, error: `HTTP ${r.status}` };
-        //     }
-
-        //     const json = await r.json();
-
-        //     // Validate on the client (optional but nice)
-        //     const parse = ThingArraySchema.safeParse(json);
-        //     if (!parse.success) {
-        //       console.warn("[list_things] schema mismatch:", parse.error.issues);
-        //       // still return raw if you prefer:
-        //       return { ok: true, data: json };
-        //     }
-
-        //     // Option A: return raw docs (model can “speak” any field)
-        //     // return { ok: true, data: parse.data };
-
-        //     // Option B: return normalized views so the model/UI has a predictable shape
-        //     const views = parse.data.map(toThingView);
-        //     return { ok: true, data: views };
-        //   });          
+        });           
 
         console.log("[App] CORE tools registration effect END");
          // eslint-disable-next-line react-hooks/exhaustive-deps
