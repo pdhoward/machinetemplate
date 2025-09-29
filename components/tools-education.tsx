@@ -12,7 +12,7 @@ import {
   TableCell,
   TableRow,
 } from "@/components/ui/table"
-import { useTranslations } from "@/components/translations-context"
+import { useTranslations } from "@/context/translations-context"
 
 
 export function ToolsEducation() {

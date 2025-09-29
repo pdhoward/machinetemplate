@@ -2,7 +2,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import GithubIcon from "@/assets/icons/Github"
 import Link from "next/link"
-import { useTranslations } from "@/components/translations-context"
+import { useTranslations } from "@/context/translations-context"
 
 export const Welcome = () => {
   const { t } = useTranslations()

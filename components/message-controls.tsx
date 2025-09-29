@@ -22,7 +22,7 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useState } from "react"
 import { Terminal } from "lucide-react"
-import { useTranslations } from "@/components/translations-context"
+import { useTranslations } from "@/context/translations-context"
 
 function FilterControls({
   typeFilter,

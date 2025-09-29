@@ -1,4 +1,4 @@
-// src/lib/agent/registerHttpTools.ts
+
 import type { ToolDef } from "@/types/tools";
 import { applyTemplate } from "@/lib/utils";
 

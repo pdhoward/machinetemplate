@@ -27,9 +27,6 @@ import { registerHttpToolsForTenant } from "@/lib/agent/registerTenantHttpTools"
 import type {ToolDef} from "@/types/tools"
 import { coreTools } from "@/types/tools";  
 
-import { ThingArraySchema } from "@/types/things.schema";
-import { toThingView } from "@/lib/things/view";
-
 import promptsJson from "@/promptlibrary/prompts.json"
 import { selectPromptForTenant, buildInstructions } from "@/lib/agent/prompts";
 import type { StructuredPrompt } from "@/types/prompt";
