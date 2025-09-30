@@ -622,6 +622,7 @@ public forceToolCall(name: string, args?: any, sayAfter?: string) {
         if (msg.name === "show_component") {
           // args: { component_name: string }
           const comp = argsObj?.component_name;
+          console.log("[REALTIME WebRTCClient] Show Component", comp, "keys:", Object.keys(argsObj));
           if (comp && this.opts.onShowComponent) this.opts.onShowComponent(comp);
         }
         break;

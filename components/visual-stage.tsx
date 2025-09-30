@@ -1,9 +1,9 @@
-// components/visual-stage.tsx
+
 "use client";
 
 import React from "react";
 import Image from "next/image";
-import { X, Film, Image as ImageIcon, ExternalLink, CreditCard } from "lucide-react";
+import { Film, Image as ImageIcon, ExternalLink } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { getVisualComponent } from "@/components/visual-registry";
@@ -13,25 +13,22 @@ export type VisualMedia =
   | { kind: "video"; src: string; poster?: string };
 
 export type VisualPayload = {
-  component_name: string;              // e.g. "payment_form" | "gallery" | "room_details"
+  component_name: string;
   title?: string;
   description?: string;
-  size?: "sm" | "md" | "lg";           // controls modal width
-  props?: Record<string, any>;         // passed to registered component
-  media?: VisualMedia | VisualMedia[]; // optional media to show
-  url?: string;                        // optional external link
+  size?: "sm" | "md" | "lg" | "xl";   // <-- CHANGE: add "xl"
+  props?: Record<string, any>;
+  media?: VisualMedia | VisualMedia[];
+  url?: string;
 };
 
-type Props = {
-  open: boolean;
-  onOpenChange: (v: boolean) => void;
-  payload: VisualPayload | null;
-};
+type Props = { open: boolean; onOpenChange: (v: boolean) => void; payload: VisualPayload | null };
 
 const sizeToWidth: Record<NonNullable<VisualPayload["size"]>, string> = {
   sm: "w-[380px]",
   md: "w-[560px]",
   lg: "w-[840px]",
+  xl: "w-[1120px]",                 // <-- CHANGE: support larger modal
 };
 
 export default function VisualStage({ open, onOpenChange, payload }: Props) {
@@ -39,8 +36,16 @@ export default function VisualStage({ open, onOpenChange, payload }: Props) {
   const title = payload?.title ?? prettyTitle(payload?.component_name ?? "Preview");
   const description = payload?.description ?? "";
 
-  // Try to pull a registered React component for this name
   const VisualComp = payload?.component_name ? getVisualComponent(payload.component_name) : null;
+
+  // pass-through payload.media to component props automatically
+  const visualProps = { ...(payload?.props ?? {}), media: payload?.media ?? payload?.props?.media };
+
+  // --- DEBUG ---
+  if (process.env.NODE_ENV !== "production") {
+    console.debug("[VisualStage] payload", payload);
+    console.debug("[VisualStage] visualProps (to component)", visualProps);
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -48,6 +53,7 @@ export default function VisualStage({ open, onOpenChange, payload }: Props) {
         className={[
           "bg-neutral-900 text-neutral-200 border border-neutral-800",
           "max-w-[92vw] p-0 overflow-hidden",
+          "max-h-[92vh]",           // <-- CHANGE: allow taller viewport
           sizeToWidth[size],
         ].join(" ")}
       >
@@ -61,18 +67,16 @@ export default function VisualStage({ open, onOpenChange, payload }: Props) {
                 </DialogDescription>
               ) : null}
             </div>
-            
           </div>
         </DialogHeader>
 
-        <div className="px-5 pb-5">
-          {/* 1) Registered component takes precedence */}
+        {/* CHANGE: give content area a scroll and height cap */}
+        <div className="px-5 pb-5 max-h-[80vh] overflow-auto">
           {VisualComp ? (
             <div className="rounded-lg border border-neutral-800 p-4">
-              <VisualComp {...(payload?.props ?? {})} />
+              <VisualComp {...visualProps} />
             </div>
           ) : (
-            // 2) Fallback viewer for media or URL
             <FallbackViewer payload={payload} />
           )}
 
@@ -96,11 +100,13 @@ function prettyTitle(s: string) {
   return s.replace(/[_-]+/g, " ").replace(/\b\w/g, (m) => m.toUpperCase());
 }
 
+// Fallback still works if no registered component; also good for quick tests
 function FallbackViewer({ payload }: { payload: VisualPayload | null }) {
   if (!payload?.media) {
     return (
       <div className="text-sm text-neutral-400">
-        No visual component registered for <span className="text-emerald-400 font-mono">{payload?.component_name}</span>.
+        No visual component registered for{" "}
+        <span className="text-emerald-400 font-mono">{payload?.component_name}</span>.
         You can register one in <span className="font-mono">visual-registry.tsx</span>.
       </div>
     );
@@ -117,17 +123,15 @@ function FallbackViewer({ payload }: { payload: VisualPayload | null }) {
               <ImageIcon size={14} />
               Image
             </div>
-            <div className="relative">
-              <Image
-                src={m.src}
-                alt={m?.alt ?? "image"}
-                width={m.width ?? 800}
-                height={m.height ?? 500}
-                placeholder={m.blurDataURL ? "blur" : "empty"}
-                blurDataURL={m.blurDataURL}
-                className="w-full h-auto object-cover"
-              />
-            </div>
+            <Image
+              src={m.src}
+              alt={m?.alt ?? "image"}
+              width={m.width ?? 800}
+              height={m.height ?? 500}
+              placeholder={m.blurDataURL ? "blur" : "empty"}
+              blurDataURL={m.blurDataURL}
+              className="w-full h-auto object-cover"
+            />
           </div>
         ) : (
           <div key={i} className="relative w-full overflow-hidden rounded-lg border border-neutral-800">
@@ -137,8 +141,12 @@ function FallbackViewer({ payload }: { payload: VisualPayload | null }) {
             </div>
             <video
               controls
+              preload="metadata"
+              playsInline
+              muted                // autoplay policy: muted required
+              autoPlay             // start right away (muted); user can unmute
               poster={m.poster}
-              className="w-full rounded-b-lg"
+              className="w-full max-h-[78vh] rounded-b-lg"
               src={m.src}
             />
           </div>

@@ -25,9 +25,10 @@ const registry: Record<string, React.ComponentType<any>> = {
   quote_summary: QuoteSummary,
   catalog_results: CatalogResults,
   reservation_confirmation: ReservationConfirmation,
-  room: RoomGallery, // generic gallery that can derive images from tenant/unit
-  waterfall_video: VideoPlayer, // kept for parity with your prior baseRegistry
+  room: RoomGallery,
+  video: VideoPlayer,           
   image_viewer: ImageViewer,
+  media_gallery: MediaGallery,  
 };
 
 export function getVisualComponent(name: string) {
@@ -314,34 +315,88 @@ function ReservationConfirmation({ reservation_id, unit_id, check_in, check_out 
 // ---- Room Gallery (tenant-aware) -----------------------------------------
 
 type RoomGalleryProps = {
-  tenantId?: string; // strongly recommended for image sourcing
+  tenantId?: string;
   unitId?: string;
-  gallery?: string[]; // if provided, use directly; otherwise derive from registry
+  media?: VisualMedia[];   // preferred: mixed images/videos
+  gallery?: string[];      // legacy: array of image URLs
+  title?: string;
+  subtitle?: string;
 };
 
-function RoomGallery({ tenantId = "cypress-resorts", unitId = "unit-villa-1", gallery }: RoomGalleryProps) {
-  const urls = Array.isArray(gallery) && gallery.length > 0
-    ? gallery
-    : getTenantUnitGallery(tenantId, unitId);
+
+function RoomGallery({
+  tenantId,
+  unitId,
+  media,
+  gallery,
+  title = "Room gallery",
+  subtitle,
+}: RoomGalleryProps) {
+  // Build a unified media list
+  const items: VisualMedia[] = Array.isArray(media) && media.length
+    ? media
+    : Array.isArray(gallery)
+      ? gallery.map((src) => ({ kind: "image" as const, src }))
+      : [];
+
+  const sub =
+    subtitle ??
+    (tenantId && unitId ? `${tenantId} · ${unitId}` : undefined);
 
   return (
     <Card className="bg-neutral-900 border-neutral-800">
       <CardHeader>
-        <CardTitle className="text-base">Room gallery</CardTitle>
-        <CardDescription className="text-xs text-neutral-400">
-          {tenantId} · {unitId}
-        </CardDescription>
+        <CardTitle className="text-base">{title}</CardTitle>
+        {sub ? (
+          <CardDescription className="text-xs text-neutral-400">
+            {sub}
+          </CardDescription>
+        ) : null}
       </CardHeader>
+
       <CardContent>
-        <div className="grid grid-cols-3 gap-2">
-          {urls.length === 0 ? (
-            <div className="col-span-3 text-sm text-neutral-400">No images registered for this unit.</div>
-          ) : (
-            urls.map((src, i) => (
-              <ImageViewer key={i} src={src} alt={`Room image ${i + 1}`} />
-            ))
-          )}
-        </div>
+        {items.length === 0 ? (
+          <div className="text-sm text-neutral-400">
+            No media available.
+          </div>
+        ) : (
+          <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 md:grid-cols-3">
+            {items.map((m, i) =>
+              m.kind === "image" ? (
+                <div
+                  key={`img-${i}`}
+                  className="relative w-full overflow-hidden rounded-lg border border-neutral-800 bg-neutral-950"
+                >
+                  <div className="relative aspect-[4/3] w-full">
+                    <Image
+                      src={m.src}
+                      alt={m.alt ?? `image ${i + 1}`}
+                      fill
+                      sizes="(max-width: 768px) 100vw, (max-width: 1120px) 50vw, 33vw"
+                      className="object-cover"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div
+                  key={`vid-${i}`}
+                  className="relative w-full overflow-hidden rounded-lg border border-neutral-800 bg-neutral-950"
+                >
+                  <div className="relative aspect-[4/3] w-full">
+                    <video
+                      controls
+                      preload="metadata"
+                      playsInline
+                      poster={m.poster}
+                      className="w-full h-full object-cover rounded"
+                      src={m.src}
+                    />
+                  </div>
+                </div>
+              )
+            )}
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -372,48 +427,160 @@ function ImageViewer({ src = "/images/placeholder-room.jpg", alt = "image", widt
   );
 }
 
-// ---- Video Player ---------------------------------------------------------
+// ====== VideoPlayer  ===================
 
-type VideoPlayerProps = {
-  src?: string;
-  poster?: string;
-};
-
+type VideoPlayerProps = { src?: string; poster?: string };
 function VideoPlayer({ src = "/videos/placeholder.mp4", poster }: VideoPlayerProps) {
   return (
-    <div className="relative w-full overflow-hidden rounded-lg border border-neutral-800 bg-neutral-950">
-      <video controls poster={poster} className="w-full rounded-lg">
-        <source src={src} />
-        Your browser does not support the video tag.
-      </video>
+    <div className="relative w-full mx-auto max-w-[800px]">
+      <div className="aspect-[4/3] max-h-[600px] w-full overflow-hidden rounded-lg border border-neutral-800 bg-neutral-950">
+        <video
+          controls
+          preload="metadata"
+          playsInline
+          muted
+          autoPlay
+          poster={poster}
+          className="w-full h-full object-contain"
+          src={src}
+        />
+      </div>
     </div>
   );
 }
 
-// ---- Mock Image Registry (tenant-aware) ----------------------------------
+// ======MediaGallery (carousel) ======================================
 
-/**
- * A simple in-memory registry for tenant/unit image sets.
- * Replace with a real data source (DB, CDN manifest, etc.).
- */
-const imageRegistry: Record<string, Record<string, string[]>> = {
-  "cypress-resorts": {
-    "unit-villa-1": [
-      "/images/cypress-resorts/unit-villa-1/1.jpg",
-      "/images/cypress-resorts/unit-villa-1/2.jpg",
-      "/images/cypress-resorts/unit-villa-1/3.jpg",
-    ],
-    "unit-villa-2": [
-      "/images/cypress-resorts/unit-villa-2/1.jpg",
-      "/images/cypress-resorts/unit-villa-2/2.jpg",
-      "/images/cypress-resorts/unit-villa-2/3.jpg",
-    ],
-  },
-  // Add more tenants/units as needed
+type VisualMedia =
+  | { kind: "image"; src: string; alt?: string; width?: number; height?: number }
+  | { kind: "video"; src: string; poster?: string };
+
+type MediaGalleryProps = {
+  media?: VisualMedia[];           // <- provided via VisualStage props auto-pass
+  startIndex?: number;
+  title?: string;
 };
 
-export function getTenantUnitGallery(tenantId: string, unitId: string): string[] {
-  return imageRegistry[tenantId]?.[unitId] ?? [];
+function MediaGallery({ media = [], startIndex = 0, title }: MediaGalleryProps) {
+  const [idx, setIdx] = React.useState(Math.min(Math.max(0, startIndex), Math.max(0, media.length - 1)));
+  const cur = media[idx];
+
+  const items = Array.isArray(media) ? media : [];
+
+    // --- DEBUG ---
+  if (process.env.NODE_ENV !== "production") {
+    console.debug("[MediaGallery] received media:", media, "count:", items.length);
+    if (items[0]) console.debug("[MediaGallery] first item:", items[0]);
+  }
+
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowRight") setIdx((i) => Math.min(media.length - 1, i + 1));
+      if (e.key === "ArrowLeft") setIdx((i) => Math.max(0, i - 1));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [media.length]);
+
+  if (media.length === 0) {
+    return <div className="text-sm text-neutral-400">No media available.</div>;
+  }
+
+  return (
+    <Card className="bg-neutral-900 border-neutral-800">
+      <CardHeader>
+        <CardTitle className="text-base">{title || "Media Gallery"}</CardTitle>
+        <CardDescription className="text-xs text-neutral-400">
+          {idx + 1} / {media.length}
+        </CardDescription>
+      </CardHeader>
+
+      <CardContent>
+        {/* Main viewer: responsive, capped around 800x600 */}
+        <div className="w-full mx-auto max-w-[800px]">
+          <div className="relative w-full bg-neutral-950 rounded-lg border border-neutral-800 overflow-hidden">
+            <div className="aspect-[4/3] max-h-[600px] w-full"> {/* ~800x600 ratio, responsive */}
+              {cur?.kind === "image" ? (
+                <Image
+                  src={cur.src}
+                  alt={("alt" in cur && cur.alt) || "image"}
+                  fill
+                  sizes="(max-width: 1120px) 100vw, 1120px"
+                  className="object-contain"
+                />
+              ) : (
+                <video
+                  key={cur.src /* reset playback when src changes */}
+                  controls
+                  preload="metadata"
+                  playsInline
+                  muted
+                  autoPlay
+                  poster={("poster" in cur && cur.poster) || undefined}
+                  className="w-full h-full object-contain"
+                  src={cur.src}
+                />
+              )}
+            </div>
+
+            {/* Prev/Next */}
+            <div className="absolute inset-y-0 left-0 flex items-center">
+              <button
+                className="m-2 rounded bg-black/50 hover:bg-black/70 text-white text-sm px-2 py-1"
+                onClick={() => setIdx((i) => Math.max(0, i - 1))}
+                aria-label="Previous"
+              >
+                ←
+              </button>
+            </div>
+            <div className="absolute inset-y-0 right-0 flex items-center">
+              <button
+                className="m-2 rounded bg-black/50 hover:bg-black/70 text-white text-sm px-2 py-1"
+                onClick={() => setIdx((i) => Math.min(media.length - 1, i + 1))}
+                aria-label="Next"
+              >
+                →
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Thumbnails */}
+        <div className="mt-3">
+          <ScrollArea className="w-full">
+            <div className="flex gap-2">
+              {media.map((m, i) => (
+                <button
+                  key={i}
+                  onClick={() => setIdx(i)}
+                  className={[
+                    "relative rounded border overflow-hidden",
+                    i === idx ? "border-emerald-500" : "border-neutral-800",
+                    "w-[96px] h-[72px] bg-neutral-950",
+                  ].join(" ")}
+                  aria-label={`Go to media ${i + 1}`}
+                >
+                  {m.kind === "image" ? (
+                    <Image
+                      src={m.src}
+                      alt={("alt" in m && m.alt) || `thumb ${i + 1}`}
+                      fill
+                      sizes="96px"
+                      className="object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full grid place-items-center text-xs text-neutral-300">
+                      Video
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
+          </ScrollArea>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 // ---- Utilities ------------------------------------------------------------

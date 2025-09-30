@@ -48,15 +48,24 @@
           "bad_request": "I’m missing required details. Ask only for the specific missing fields."
         }
       },
+      "booking_list_units": {
+        "when": [
+          "The user is interested in learning about the Units, such as amenities in the room, room configurations, or seeing pictures and videos of the units",
+          "The user is interested in the room rates, and other resort fees",
+          "The user wants to know about policies such as cancellation of reservations, pets or checkin and checkout times. "
+        ],
+        "args": ["tenant_id"]        
+      },
       "list_things": {
         "when": [
-          "tell me about the amenities at the resort, ‘show spa treatments’, etc.",
-          "Use to discover and describe amenities, events, and activities at the resort or locale."
+          "tell me about the amenities at the resort such as spa services, chef services, or local events",
+          "Use to discover and describe amenities, events, and activities at the resort or locale.",
+          "If the user asks for a site plan"
         ]
       },
       "show_component": {
         "when": [
-          "You need to open UI (e.g., payment, confirmation, gallery)."
+          "A user requests media (pictures/videos/site plans/menus) or wishes to provide payment information, use the appropriate tool to retrieve the relevant data or url arrays, and then show_component tool to render it to the web page"
         ],
         "args": ["component_name", "props?"]
       },

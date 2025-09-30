@@ -31,20 +31,37 @@ import promptsJson from "@/promptlibrary/prompts.json"
 import { selectPromptForTenant, buildInstructions } from "@/lib/agent/prompts";
 import type { StructuredPrompt } from "@/types/prompt";
  
-
 // --- tool schema you expose to the model ---
-const defaultTools: ToolDef[] = [
+const defaultTools: ToolDef[] = [ 
   {
     type: "function",
     name: "show_component",
-    description: "Show UI component (image/video/panel) by name.",
+    description: "Display a modal with images/videos for a unit. Use this after fetching unit data. Pass the full details including media array.",
     parameters: {
       type: "object",
-      properties: { component_name: { type: "string", description: "Component key to display" } },
-      required: ["component_name"],
-      additionalProperties: false,
-    },
-  },
+      properties: {
+        component_name: { type: "string", description: "Name/slug of the component (e.g., 'falls_villa')" },
+        title: { type: "string", description: "Title for the modal (e.g., 'Falls Villa Media')" },
+        description: { type: "string", description: "Brief description (e.g., 'Explore photos and videos...')" },
+        media: {
+          type: "array",
+          description: "Array of media objects to display",
+          items: {
+            type: "object",
+            properties: {
+              kind: { type: "string", enum: ["image", "video"] },
+              src: { type: "string", description: "URL of the media" },
+              alt: { type: "string", description: "Alt text (for images)" },
+              poster: { type: "string", description: "Poster image URL (for videos)" }
+            },
+            required: ["kind", "src"]
+          }
+        }
+      },
+      required: ["component_name", "media"], // Enforce media is always passed
+      additionalProperties: true // Allow extras if needed
+    }
+  }
 ];
 
 // ---------- page ----------
@@ -138,11 +155,45 @@ const App: React.FC = () => {
 
        // register the visual helper tool
        console.log("[App] registerFunction: show_component");
-       registerFunction("show_component", async (args: any) => {
-          // args can be { component_name, title?, description?, size?, props?, media?, url? }
-          stageRef.current?.show(args);
-          return { ok: true };
-        });           
+      
+      registerFunction("show_component", async (args: any) => {
+        // --- DEBUG START ---
+        console.groupCollapsed("[show_component] incoming args");
+        console.log(args);
+        console.groupEnd();
+        // --- DEBUG END ---
+
+        const payload: any = { ...(args || {}) };
+        payload.props = { ...(payload.props || {}) };
+
+        // 🔧 Normalize: sometimes media/url arrive stringified
+        const tryParse = (v: any) => {
+          if (typeof v === "string") {
+            try { return JSON.parse(v); } catch { /* ignore */ }
+          }
+          return v;
+        };
+        payload.media = tryParse(payload.media);
+        payload.props.media = tryParse(payload.props.media);
+        payload.url = tryParse(payload.url);
+        payload.props.url = tryParse(payload.props.url);
+
+        // Mirror top-level → props (so components that only read props still work)
+        if (payload.media && !payload.props.media) payload.props.media = payload.media;
+        if (payload.url && !payload.props.url) payload.props.url = payload.url;
+        if (payload.title && !payload.props.title) payload.props.title = payload.title;
+        if (payload.description && !payload.props.description) payload.props.description = payload.description;
+
+        // --- DEBUG START ---
+        const mediaLen = Array.isArray(payload.media) ? payload.media.length :
+                        Array.isArray(payload.props.media) ? payload.props.media.length : 0;
+        console.debug("[show_component] normalized payload", { component: payload.component_name, mediaLen, payload });
+        // --- DEBUG END ---
+
+        stageRef.current?.show(payload);
+        return { ok: true };
+      });
+    
 
         console.log("[App] CORE tools registration effect END");
          // eslint-disable-next-line react-hooks/exhaustive-deps
