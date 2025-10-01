@@ -112,16 +112,7 @@ const App: React.FC = () => {
     setCallbacks, 
     getClient,
   } = useRealtime();
-  
-    // Bind callbacks that depend on local refs/state
-    useEffect(() => {
-      setCallbacks({
-        onShowComponent: (name: string) => {
-          stageRef.current?.show?.({ component_name: name });
-        },
-      });
-    }, [setCallbacks]);
-
+   
     // Push initial agent config and whenever it changes
      useEffect(() => {
       setAgent({ name: tenantId, voice }); // tool instructions handled below

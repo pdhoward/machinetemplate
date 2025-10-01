@@ -31,8 +31,7 @@ export type RealtimeProviderOptions = {
   initialAgent?: AgentConfigInput;
   /** Max buffered server events */
   maxEventBuffer?: number;
-  /** Optional: initial callbacks; can be replaced later via setCallbacks(...) */
-  onShowComponent?: (name: string) => void;
+  /** Optional: initial callbacks; can be replaced later via setCallbacks(...) */  
   onServerEvent?: (ev: any) => void;
 };
 
@@ -73,8 +72,7 @@ export type RealtimeContextValue = {
   forceToolCall: (name: string, args?: any, sayAfter?: string) => void;
 
   // allow pages to update callbacks later (e.g., bind stageRef.current)
-  setCallbacks: (partial: {
-    onShowComponent?: (name: string) => void;
+  setCallbacks: (partial: {   
     onServerEvent?: (ev: any) => void;
   }) => void;
 };
@@ -151,8 +149,7 @@ export function RealtimeProvider({
       turnDetection,
       onStatus: setStatus,
       onConversation: setConversation,
-      onVolume: setVolume,
-      onShowComponent: options?.onShowComponent,   // can be replaced via setCallbacks
+      onVolume: setVolume,      
       onServerEvent: handleServerEvent,            // wrapped buffer
     });
 
@@ -213,11 +210,10 @@ export function RealtimeProvider({
 
   // Keep callbacks fresh if provider options change
   useEffect(() => {
-    clientRef.current?.setCallbacks({
-      onShowComponent: options?.onShowComponent,
+    clientRef.current?.setCallbacks({     
       onServerEvent: handleServerEvent,
     });
-  }, [options?.onShowComponent, handleServerEvent]);
+  }, [handleServerEvent]);
 
   // Also bridge to window here to fight HMR/global loss
   useEffect(() => {
