@@ -19,6 +19,7 @@ import {
 import { Send } from "lucide-react"; 
 import { motion } from "framer-motion";
 import { useToolsFunctions } from "@/hooks/use-tools";
+import { useVisualFunctions } from "@/hooks/use-visuals";
 import {Diagnostics} from "@/components/diagnostics"
 
 import { fetchTenantHttpTools } from "@/lib/registry/fetchTenantTools";
@@ -71,15 +72,16 @@ const App: React.FC = () => {
   const [voice, setVoice] = useState("alloy");
   const [timer, setTimer] = useState<number>(0);
   const [componentName, setComponentName] = useState<string | null>(null);
-  const [isMuted, setIsMuted] = useState(false); 
-
-  const toolsFunctions = useToolsFunctions(); ///set of locally defined tools in hook
+  const [isMuted, setIsMuted] = useState(false);   
   
   const { tenantId } = useTenant();
   // anchor for the visualizer card
   const messagesEndRef = useRef<HTMLDivElement>(null);
   // anchor for the visual components
-  const stageRef = useRef<VisualStageHandle>(null)   
+  const stageRef = useRef<VisualStageHandle>(null)  
+  
+  const toolsFunctions = useToolsFunctions(); //locally defined utility tools in hook
+  const visualFunction = useVisualFunctions({stageProp: stageRef}); //locally defined visual UI tool in hook
 
  /*
   Wrap the stageRef with a stable function and use that in Registering 
@@ -130,10 +132,11 @@ const App: React.FC = () => {
         launchWebsite: "launchWebsite",
         copyToClipboard: "copyToClipboard",
         scrapeWebsite: "scrapeWebsite",
+        visualFunction: "show_component"
         //expose more tools as needed
       };
 
-      // register toolbox functions
+      // register utility toolbox functions
       Object.entries(toolsFunctions).forEach(([localName, fn]) => {
         const toolName = nameMap[localName];
         if (toolName && typeof fn === "function") {
@@ -144,47 +147,16 @@ const App: React.FC = () => {
         }
       });
 
-       // register the visual helper tool
-       console.log("[App] registerFunction: show_component");
-      
-      registerFunction("show_component", async (args: any) => {
-        // --- DEBUG START ---
-        console.groupCollapsed("[show_component] incoming args");
-        console.log(args);
-        console.groupEnd();
-        // --- DEBUG END ---
-
-        const payload: any = { ...(args || {}) };
-        payload.props = { ...(payload.props || {}) };
-
-        // 🔧 Normalize: sometimes media/url arrive stringified
-        const tryParse = (v: any) => {
-          if (typeof v === "string") {
-            try { return JSON.parse(v); } catch { /* ignore */ }
-          }
-          return v;
-        };
-        payload.media = tryParse(payload.media);
-        payload.props.media = tryParse(payload.props.media);
-        payload.url = tryParse(payload.url);
-        payload.props.url = tryParse(payload.props.url);
-
-        // Mirror top-level → props (so components that only read props still work)
-        if (payload.media && !payload.props.media) payload.props.media = payload.media;
-        if (payload.url && !payload.props.url) payload.props.url = payload.url;
-        if (payload.title && !payload.props.title) payload.props.title = payload.title;
-        if (payload.description && !payload.props.description) payload.props.description = payload.description;
-
-        // --- DEBUG START ---
-        const mediaLen = Array.isArray(payload.media) ? payload.media.length :
-                        Array.isArray(payload.props.media) ? payload.props.media.length : 0;
-        console.debug("[show_component] normalized payload", { component: payload.component_name, mediaLen, payload });
-        // --- DEBUG END ---
-
-        stageRef.current?.show(payload);
-        return { ok: true };
-      });
-    
+      // register visual UI function
+      Object.entries(visualFunction).forEach(([localName, fn]) => {
+        const toolName = nameMap[localName];
+        if (toolName && typeof fn === "function") {
+          console.log("[App] registerFunction:", toolName, "from localName:", localName);
+          registerFunction(toolName, fn);
+        } else {
+          console.log("[App] skip localName:", localName, "->", toolName, "fn type:", typeof fn);
+        }
+      });      
 
         console.log("[App] CORE tools registration effect END");
          // eslint-disable-next-line react-hooks/exhaustive-deps
