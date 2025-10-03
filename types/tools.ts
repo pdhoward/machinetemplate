@@ -1,9 +1,44 @@
-export type ToolDef = {
-  type: "function";
-  name: string;
-  description?: string;
-  parameters?: any;
-};
+// export type ToolDef = {
+//   type: "function";
+//   name: string;
+//   description?: string;
+//   strict?: boolean;
+//   parameters?: any;
+// };
+
+ 
+// --- tool schema you expose to the model ---
+export type ToolDef = 
+  {
+    type: "function",
+    name: "show_component",
+    description: "Display a modal with images/videos for a unit. Use this after fetching unit data. Pass the full details including media array.",
+    parameters: {
+      type: "object",
+      properties: {
+        component_name: { type: "string", description: "Name/slug of the component (e.g., 'falls_villa')" },
+        title: { type: "string", description: "Title for the modal (e.g., 'Falls Villa Media')" },
+        description: { type: "string", description: "Brief description (e.g., 'Explore photos and videos...')" },
+        media: {
+          type: "array",
+          description: "Array of media objects to display",
+          items: {
+            type: "object",
+            properties: {
+              kind: { type: "string", enum: ["image", "video"] },
+              src: { type: "string", description: "URL of the media" },
+              alt: { type: "string", description: "Alt text (for images)" },
+              poster: { type: "string", description: "Poster image URL (for videos)" }
+            },
+            required: ["kind", "src"]
+          }
+        }
+      },
+      required: ["component_name", "media"], // Enforce media is always passed
+      additionalProperties: true // Allow extras if needed
+    }
+  }
+
 
 // visual surface
 
@@ -128,5 +163,83 @@ export const coreTools: ToolDef[] = [
     },
   },
 
+  // showComponent 
+
+  {
+  type: "function",
+  name: "show_component",
+  description: "Render a visual panel on the stage.",
+  strict: true, // ✅ enforce schema adherence
+  parameters: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      component_name: {
+        type: "string",
+        enum: [
+          "payment_form",
+          "quote_summary",
+          "catalog_results",
+          "reservation_confirmation",
+          "room",
+          "video",
+          "image_viewer",
+          "media_gallery",
+        ],
+      },
+      // Optional routing hint the model can set
+      intent: {
+        type: "string",
+        enum: ["payment","quote","reservation_confirmation","results","room","media","video","image"],
+      },
+      title: { type: "string" },
+      description: { type: "string" },
+      size: { type: "string", enum: ["sm","md","lg","xl"] },
+      url: { type: "string" },
+      // NOTE: media can be one item or an array; both branches are strict
+      media: {
+        anyOf: [
+          {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              kind: { type: "string", enum: ["image", "video"] },
+              src: { type: "string" },
+              alt: { type: "string" },
+              width: { type: "number" },
+              height: { type: "number" },
+              poster: { type: "string" },
+            },
+            required: ["kind", "src"],
+          },
+          {
+            type: "array",
+            minItems: 1,
+            items: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                kind: { type: "string", enum: ["image", "video"] },
+                src: { type: "string" },
+                alt: { type: "string" },
+                width: { type: "number" },
+                height: { type: "number" },
+                poster: { type: "string" },
+              },
+              required: ["kind", "src"],
+            },
+          },
+        ],
+      },
+      // forward-compatible for your components; keep strict at this level too
+      props: {
+        type: "object",
+        additionalProperties: true
+      }
+    },
+    // Only require the fields you truly need for a minimal render
+    required: ["component_name"]
+  }
+}
 
 ];
