@@ -111,6 +111,10 @@
       "Confirm back the interpreted dates and unit before reserving."
     ]
   },
+  "schema_violation": [
+    "If a tool result returns error: 'schema_violation', immediately call the same tool again with corrected arguments.",
+    "Never use placeholder URLs for corrected arguments; fetch real media from the Units API or the compose_media_payload tool."
+  ],
   "response_templates": {
     "availability_ok": "Good news—{unit.name}{unit.unitNumber?} is available {window.check_in} to {window.check_out}.",
     "availability_overlap": "That unit is already booked for part of that window. Would you like different dates or a different unit?",

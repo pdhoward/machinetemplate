@@ -1,43 +1,43 @@
-// export type ToolDef = {
-//   type: "function";
-//   name: string;
-//   description?: string;
-//   strict?: boolean;
-//   parameters?: any;
-// };
+export type ToolDef = {
+  type: "function";
+  name: string;
+  description?: string;
+  strict?: boolean;
+  parameters?: any;
+};
 
  
 // --- tool schema you expose to the model ---
-export type ToolDef = 
-  {
-    type: "function",
-    name: "show_component",
-    description: "Display a modal with images/videos for a unit. Use this after fetching unit data. Pass the full details including media array.",
-    parameters: {
-      type: "object",
-      properties: {
-        component_name: { type: "string", description: "Name/slug of the component (e.g., 'falls_villa')" },
-        title: { type: "string", description: "Title for the modal (e.g., 'Falls Villa Media')" },
-        description: { type: "string", description: "Brief description (e.g., 'Explore photos and videos...')" },
-        media: {
-          type: "array",
-          description: "Array of media objects to display",
-          items: {
-            type: "object",
-            properties: {
-              kind: { type: "string", enum: ["image", "video"] },
-              src: { type: "string", description: "URL of the media" },
-              alt: { type: "string", description: "Alt text (for images)" },
-              poster: { type: "string", description: "Poster image URL (for videos)" }
-            },
-            required: ["kind", "src"]
-          }
-        }
-      },
-      required: ["component_name", "media"], // Enforce media is always passed
-      additionalProperties: true // Allow extras if needed
-    }
-  }
+// export type ToolDef = 
+//   {
+//     type: "function",
+//     name: "show_component",
+//     description: "Display a modal with images/videos for a unit. Use this after fetching unit data. Pass the full details including media array.",
+//     parameters: {
+//       type: "object",
+//       properties: {
+//         component_name: { type: "string", description: "Name/slug of the component (e.g., 'falls_villa')" },
+//         title: { type: "string", description: "Title for the modal (e.g., 'Falls Villa Media')" },
+//         description: { type: "string", description: "Brief description (e.g., 'Explore photos and videos...')" },
+//         media: {
+//           type: "array",
+//           description: "Array of media objects to display",
+//           items: {
+//             type: "object",
+//             properties: {
+//               kind: { type: "string", enum: ["image", "video"] },
+//               src: { type: "string", description: "URL of the media" },
+//               alt: { type: "string", description: "Alt text (for images)" },
+//               poster: { type: "string", description: "Poster image URL (for videos)" }
+//             },
+//             required: ["kind", "src"]
+//           }
+//         }
+//       },
+//       required: ["component_name", "media"], // Enforce media is always passed
+//       additionalProperties: true // Allow extras if needed
+//     }
+//   }
 
 
 // visual surface

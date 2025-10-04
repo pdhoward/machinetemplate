@@ -9,12 +9,26 @@ const nextConfig: NextConfig = {
       removeConsole: process.env.NODE_ENV === "production"
     },
     reactStrictMode: true,
-    images: {
-    domains: [
-      "res.cloudinary.com",       // Cloudinary
-      "cdn.cypressresorts.com",   // CDN
-      "cypressbooking.vercel.app" // app host 
-    ],
+     images: {
+      // ✅ New style: allowlist external images with protocol/host/path
+      remotePatterns: [
+        {
+          protocol: "https",
+          hostname: "res.cloudinary.com",
+          // tighten to your account if you want (you used /stratmachine/... in URLs)
+          pathname: "/stratmachine/**",
+        },
+        {
+          protocol: "https",
+          hostname: "cdn.cypressresorts.com",
+          pathname: "/**",
+        },
+        {
+          protocol: "https",
+          hostname: "cypressbooking.vercel.app",
+          pathname: "/**",
+        },
+      ],    
   },
 };
 

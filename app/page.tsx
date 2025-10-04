@@ -32,39 +32,6 @@ import promptsJson from "@/promptlibrary/prompts.json"
 import { selectPromptForTenant, buildInstructions } from "@/lib/agent/prompts";
 import type { StructuredPrompt } from "@/types/prompt";
  
-// --- tool schema you expose to the model ---
-const defaultTools: ToolDef[] = [ 
-  {
-    type: "function",
-    name: "show_component",
-    description: "Display a modal with images/videos for a unit. Use this after fetching unit data. Pass the full details including media array.",
-    parameters: {
-      type: "object",
-      properties: {
-        component_name: { type: "string", description: "Name/slug of the component (e.g., 'falls_villa')" },
-        title: { type: "string", description: "Title for the modal (e.g., 'Falls Villa Media')" },
-        description: { type: "string", description: "Brief description (e.g., 'Explore photos and videos...')" },
-        media: {
-          type: "array",
-          description: "Array of media objects to display",
-          items: {
-            type: "object",
-            properties: {
-              kind: { type: "string", enum: ["image", "video"] },
-              src: { type: "string", description: "URL of the media" },
-              alt: { type: "string", description: "Alt text (for images)" },
-              poster: { type: "string", description: "Poster image URL (for videos)" }
-            },
-            required: ["kind", "src"]
-          }
-        }
-      },
-      required: ["component_name", "media"], // Enforce media is always passed
-      additionalProperties: true // Allow extras if needed
-    }
-  }
-];
-
 // ---------- page ----------
 const App: React.FC = () => {
   const [isOpen, setIsOpen] = useState(true); // for the close “×” button
@@ -78,10 +45,10 @@ const App: React.FC = () => {
   // anchor for the visualizer card
   const messagesEndRef = useRef<HTMLDivElement>(null);
   // anchor for the visual components
-  const stageRef = useRef<VisualStageHandle>(null)  
+  const stageRef = useRef<VisualStageHandle | null>(null);
   
   const toolsFunctions = useToolsFunctions(); //locally defined utility tools in hook
-  const visualFunction = useVisualFunctions({stageProp: stageRef}); //locally defined visual UI tool in hook
+  const visualFunction = useVisualFunctions({stageRef}); //locally defined visual UI tool in hook
 
  /*
   Wrap the stageRef with a stable function and use that in Registering 

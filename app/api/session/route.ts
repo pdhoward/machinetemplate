@@ -20,16 +20,11 @@ function normalizeTools(raw: any): any[] {
         ? t.parameters
         : { type: "object", properties: {}, additionalProperties: false };
 
-    // ✅ Preserve strict and any other tool-level options
-    // the API enforces tool schema and the model will only emit arguments that validate against it.
-    const strict = t?.strict === true;
-
     return { 
       type: "function", 
       name: rawName, 
       description, 
-      parameters, 
-      ...(strict ? { strict: true } : {}),
+      parameters,       
     };
   });
 }
