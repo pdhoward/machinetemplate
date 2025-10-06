@@ -39,6 +39,24 @@ export function registerVisualComponent(name: string, comp: React.ComponentType<
   registry[name] = comp;
 }
 
+
+// ---- Utilities ------------------------------------------------------------
+
+function formatMoney(amount?: number | string, currency?: string) {
+  if (amount == null || amount === "") return "—";
+  const value = typeof amount === "string" ? Number(amount) : amount;
+  if (Number.isNaN(value)) return String(amount);
+  const iso = currency || "USD";
+  // amount may be in cents based on upstream; try to detect if large
+  const normalized = value > 999 ? value / 100 : value;
+  try {
+    return new Intl.NumberFormat(undefined, { style: "currency", currency: iso }).format(normalized);
+  } catch {
+    return `${normalized.toFixed(2)} ${iso}`;
+  }
+}
+
+
 // ---- Types shared by components ------------------------------------------
 
 type Address = {
@@ -461,7 +479,7 @@ type MediaGalleryProps = {
   title?: string;
 };
 
-function MediaGallery({ media = [], startIndex = 0, title }: MediaGalleryProps) {
+function MediaGallery({ media = [], startIndex = 0, title, compact = false }: MediaGalleryProps & { compact?: boolean }) {
   const [idx, setIdx] = React.useState(Math.min(Math.max(0, startIndex), Math.max(0, media.length - 1)));
   const cur = media[idx];
 
@@ -487,19 +505,19 @@ function MediaGallery({ media = [], startIndex = 0, title }: MediaGalleryProps) 
   }
 
   return (
-    <Card className="bg-neutral-900 border-neutral-800">
-      <CardHeader>
+   <Card className="bg-neutral-900 border-neutral-800">
+      <CardHeader className={compact ? "px-4 py-3" : undefined}>
         <CardTitle className="text-base">{title || "Media Gallery"}</CardTitle>
         <CardDescription className="text-xs text-neutral-400">
           {idx + 1} / {media.length}
         </CardDescription>
       </CardHeader>
 
-      <CardContent>
-        {/* Main viewer: responsive, capped around 800x600 */}
-        <div className="w-full mx-auto max-w-[800px]">
+      <CardContent className={compact ? "pt-0 px-4 pb-3" : undefined}>
+        {/* Main viewer: tighten max height when compact */}
+        <div className="w-full mx-auto" style={{ maxWidth: compact ? 880 : 800 }}>
           <div className="relative w-full bg-neutral-950 rounded-lg border border-neutral-800 overflow-hidden">
-            <div className="aspect-[4/3] max-h-[600px] w-full"> {/* ~800x600 ratio, responsive */}
+            <div className={compact ? "aspect-[16/10] max-h-[520px] w-full" : "aspect-[4/3] max-h-[600px] w-full"}>
               {cur?.kind === "image" ? (
                 <Image
                   src={cur.src}
@@ -510,7 +528,7 @@ function MediaGallery({ media = [], startIndex = 0, title }: MediaGalleryProps) 
                 />
               ) : (
                 <video
-                  key={cur.src /* reset playback when src changes */}
+                  key={cur.src}
                   controls
                   preload="metadata"
                   playsInline
@@ -523,7 +541,7 @@ function MediaGallery({ media = [], startIndex = 0, title }: MediaGalleryProps) 
               )}
             </div>
 
-            {/* Prev/Next */}
+            {/* Prev/Next buttons (unchanged) */}
             <div className="absolute inset-y-0 left-0 flex items-center">
               <button
                 className="m-2 rounded bg-black/50 hover:bg-black/70 text-white text-sm px-2 py-1"
@@ -545,56 +563,49 @@ function MediaGallery({ media = [], startIndex = 0, title }: MediaGalleryProps) 
           </div>
         </div>
 
-        {/* Thumbnails */}
+       {/* Thumbnails: tighter size when compact */}
         <div className="mt-3">
           <ScrollArea className="w-full">
             <div className="flex gap-2">
-              {media.map((m, i) => (
-                <button
-                  key={i}
-                  onClick={() => setIdx(i)}
-                  className={[
-                    "relative rounded border overflow-hidden",
-                    i === idx ? "border-emerald-500" : "border-neutral-800",
-                    "w-[96px] h-[72px] bg-neutral-950",
-                  ].join(" ")}
-                  aria-label={`Go to media ${i + 1}`}
-                >
-                  {m.kind === "image" ? (
-                    <Image
-                      src={m.src}
-                      alt={("alt" in m && m.alt) || `thumb ${i + 1}`}
-                      fill
-                      sizes="96px"
-                      className="object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-full grid place-items-center text-xs text-neutral-300">
-                      Video
-                    </div>
-                  )}
-                </button>
-              ))}
+              {media.map((m, i) => {
+                const isActive = i === idx;
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setIdx(i)}
+                    title={`Go to media ${i + 1}`}
+                    className={[
+                      "relative overflow-hidden rounded border",
+                      isActive ? "border-emerald-500 ring-1 ring-emerald-500" : "border-neutral-800",
+                      compact ? "w-[72px] h-[54px]" : "w-[96px] h-[72px]",
+                      "bg-neutral-950 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500",
+                    ].join(" ")}
+                    aria-label={`Go to media ${i + 1}`}
+                    aria-current={isActive ? "true" : undefined}
+                  >
+                    {m.kind === "image" ? (
+                      <Image
+                        src={m.src}
+                        alt={("alt" in m && m.alt) || `thumb ${i + 1}`}
+                        fill
+                        sizes={compact ? "72px" : "96px"}
+                        className="object-cover"
+                      />
+                    ) : (
+                      <div className="grid place-items-center w-full h-full text-[10px] text-neutral-300">
+                        Video
+                        <span className="sr-only">Video thumbnail</span>
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </ScrollArea>
         </div>
+
       </CardContent>
     </Card>
   );
-}
-
-// ---- Utilities ------------------------------------------------------------
-
-function formatMoney(amount?: number | string, currency?: string) {
-  if (amount == null || amount === "") return "—";
-  const value = typeof amount === "string" ? Number(amount) : amount;
-  if (Number.isNaN(value)) return String(amount);
-  const iso = currency || "USD";
-  // amount may be in cents based on upstream; try to detect if large
-  const normalized = value > 999 ? value / 100 : value;
-  try {
-    return new Intl.NumberFormat(undefined, { style: "currency", currency: iso }).format(normalized);
-  } catch {
-    return `${normalized.toFixed(2)} ${iso}`;
-  }
 }
