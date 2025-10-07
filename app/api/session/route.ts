@@ -2,7 +2,7 @@
 import { NextResponse } from "next/server";
 
 //const ALLOWED_MODELS = new Set(["gpt-4o-realtime-preview-2024-12-17"]);
-const ALLOWED_MODELS = new Set(["gpt-realtime"]);
+const ALLOWED_MODELS = new Set(["gpt-realtime", "gpt_realtime_mini"]);
 const ALLOWED_VOICES = new Set(["alloy", "coral"]);
 
 function normalizeTools(raw: any): any[] {

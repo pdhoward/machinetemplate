@@ -11,9 +11,11 @@ import { TwitterIcon, StarIcon } from "lucide-react";
 import { motion } from "framer-motion";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { useTranslations } from "@/context/translations-context";
+import { AccessGate } from "@/components/security/access-gate";
 
 export function Header() {
   const { t } = useTranslations();
+
   return (
     <motion.header
       initial={{ y: -20, opacity: 0 }}
@@ -29,11 +31,11 @@ export function Header() {
           transition={{ delay: 0.2 }}
           className="max-md:hidden flex items-center"
         >
-          <Link 
-            href="https://www.strategicmachines.ai/" 
+          <Link
+            href="https://www.strategicmachines.ai/"
             className="flex gap-3 items-center"
             target="_blank"
-            >
+          >
             <motion.h1
               className="text-lg font-medium tracking-tighter flex gap-1 items-center"
               whileHover={{ scale: 1.02 }}
@@ -51,12 +53,17 @@ export function Header() {
             </motion.div>
           </Link>
         </motion.nav>
+
+        {/* Right controls */}
         <motion.div
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.1 }}
           className="flex gap-3 items-center justify-end ml-auto"
         >
+          {/* 🔐 New: Compact OTP access widget */}
+          <AccessGate />
+
           <LanguageSwitcher />
           <Link
             href={siteConfig.links.github}

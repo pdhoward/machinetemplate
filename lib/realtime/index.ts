@@ -339,7 +339,7 @@ public forceToolCall(name: string, args?: any, sayAfter?: string) {
     // 7) Build Realtime URL (two styles)
     const base = this.opts.apiBase ?? "https://api.openai.com/v1/realtime";
     //const model = this.opts.model ?? "gpt-4o-realtime-preview-2024-12-17";
-    const model = this.opts.model ?? "gpt-realtime";
+    const model = this.opts.model ?? process.env.OPENAI_API_REALTIME ?? "gpt_realtime_mini"
     const voice = this.agent.voice ?? this.opts.voice ?? "alloy";
 
     // A) Keep params (redundant but crystal-clear)

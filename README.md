@@ -22,3 +22,10 @@ The workflow involved ingesting the HTTP descriptors which are disaggregated and
 The intent is to create a secure multitenant platform for companies to consume Voice and Text Agents providing an elegant and sophisticated range of interactions for products, reservations, sales, orders, appointments, and other common consumer activity, where the Web by itself is not sufficient by itself in engagement or resolution.
 
 A 'human in the loop' capability will also be added
+
+### A One Time Password (OTP) protection was added to track usage and limit rates
+
+Note that google as a transporter requires a 16 character app password
+
+Sign into gmail account and got to
+https://myaccount.google.com/apppasswords
