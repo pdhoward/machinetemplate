@@ -31,7 +31,7 @@ export type VisualPayload = {
 
 type Props = { open: boolean; onOpenChange: (v: boolean) => void; payload: VisualPayload | null };
 
-// Desktop/tablet width caps (ignored on mobile thanks to sm:)
+// Desktop/tablet width caps (applied at sm+)
 const sizeToMaxWidth: Record<NonNullable<VisualPayload["size"]>, string> = {
   sm: "sm:max-w-[380px]",
   md: "sm:max-w-[560px]",
@@ -39,7 +39,6 @@ const sizeToMaxWidth: Record<NonNullable<VisualPayload["size"]>, string> = {
   xl: "sm:max-w-[1120px]",
 };
 
-// Components that render their own header “chrome”
 const HAS_OWN_CHROME = new Set([
   "payment_form",
   "quote_summary",
@@ -51,7 +50,6 @@ const HAS_OWN_CHROME = new Set([
 
 export default function VisualStage({ open, onOpenChange, payload }: Props) {
   const size = payload?.size ?? "md";
-
   const rawTitle = payload?.title ?? prettyTitle(payload?.component_name ?? "Preview");
   const titleText = rawTitle?.trim() || "Media viewer";
   const description = payload?.description?.trim() || "";
@@ -64,7 +62,6 @@ export default function VisualStage({ open, onOpenChange, payload }: Props) {
   };
 
   const showHeader = payload?.component_name ? !HAS_OWN_CHROME.has(payload.component_name) : true;
-
   const titleId = "visual-stage-title";
   const descId = "visual-stage-desc";
 
@@ -74,22 +71,23 @@ export default function VisualStage({ open, onOpenChange, payload }: Props) {
         aria-labelledby={titleId}
         aria-describedby={description ? descId : undefined}
         className={[
-          // Base surface
-          "bg-neutral-900 text-neutral-200 border border-neutral-800 overflow-hidden",
-          // Mobile: bottom-sheet feel (full width, safe areas, tall)
-          "w-[100vw] max-w-none h-[100dvh] sm:h-auto sm:w-auto",
-          "rounded-none sm:rounded-2xl",
-          "pt-[max(env(safe-area-inset-top),0px)] pb-[max(env(safe-area-inset-bottom),0px)]",
-          // Layout: header / content / footer
+          // Surface & stacking
+          "bg-neutral-900 text-neutral-200 border border-neutral-800 overflow-hidden z-[120]",
+          // Centered modal at all sizes (uses shadcn's left/top translate)
+          // PHONE: clamp width/height so it never hits header or footer
+          "w-[min(96vw,430px)] max-h-[min(90dvh,720px)]",
+          "rounded-xl",
+          // Layout: header / scrollable content / footer
           "p-0 grid grid-rows-[auto,1fr,auto]",
-          // Internal scroll & momentum on mobile
           "overscroll-contain",
-          // Tablet/desktop sizing: center and cap by size
+          // TABLET/DESKTOP: widen & raise height cap
           "sm:w-[92vw] sm:max-h-[min(85vh,900px)]",
           sizeToMaxWidth[size],
+          // Optional: on very tall desktops you can increase rounding
+          "sm:rounded-2xl",
         ].join(" ")}
       >
-        {/* Always include a title node for a11y */}
+        {/* a11y title always present */}
         <VisuallyHidden>
           <DialogTitle>{titleText}</DialogTitle>
         </VisuallyHidden>
@@ -126,7 +124,6 @@ export default function VisualStage({ open, onOpenChange, payload }: Props) {
                 {description}
               </DialogDescription>
             ) : null}
-            {/* Big touch target on mobile */}
             <DialogClose
               className="absolute right-2 top-2 z-10 p-2 rounded-md bg-neutral-900/80 hover:bg-neutral-800 text-neutral-200"
               aria-label="Close"
@@ -136,33 +133,22 @@ export default function VisualStage({ open, onOpenChange, payload }: Props) {
           </div>
         )}
 
-        {/* CONTENT */}
-        <div
-          className={[
-            // allow scroll only within content row
-            "min-h-0 overflow-auto",
-            // comfy padding, denser on mobile
-            "p-3 sm:p-5",
-            // prevent horizontal bounce
-            "overscroll-y-contain",
-          ].join(" ")}
-        >
+        {/* CONTENT (scrolls; never pushes header/footer out) */}
+        <div className="min-h-0 overflow-auto p-3 sm:p-5 overscroll-y-contain">
           {VisualComp ? <VisualComp {...visualProps} /> : <FallbackViewer payload={payload} />}
         </div>
 
-        {/* Footer (optional external link) */}
-        {payload?.url ? (
-          <div className="px-3 sm:px-5 pb-3 sm:pb-4 border-t border-neutral-800 flex justify-end">
+        {/* FOOTER always reserved so it can't vanish on tiny viewports */}
+        <div className="px-3 sm:px-5 py-3 sm:py-4 border-t border-neutral-800 flex justify-end min-h-[40px]">
+          {payload?.url ? (
             <Button asChild variant="outline" size="sm" className="gap-1">
               <a href={payload.url} target="_blank" rel="noreferrer noopener">
                 Open link
                 <ExternalLink size={14} />
               </a>
             </Button>
-          </div>
-        ) : (
-          <div /> // keep the grid's third row
-        )}
+          ) : null}
+        </div>
       </DialogContent>
     </Dialog>
   );
@@ -182,9 +168,7 @@ function FallbackViewer({ payload }: { payload: VisualPayload | null }) {
       </div>
     );
   }
-
   const items = Array.isArray(payload.media) ? payload.media : [payload.media];
-
   return (
     <div className="grid gap-3 sm:gap-4">
       {items.map((m, i) =>
@@ -193,11 +177,7 @@ function FallbackViewer({ payload }: { payload: VisualPayload | null }) {
             <div className="flex items-center gap-2 px-3 py-2 text-xs text-neutral-400 border-b border-neutral-800">
               Image
             </div>
-            <img
-              src={m.src}
-              alt={m?.alt ?? "image"}
-              className="block w-full h-auto object-cover"
-            />
+            <img src={m.src} alt={m?.alt ?? "image"} className="block w-full h-auto object-cover" />
           </div>
         ) : (
           <div key={i} className="relative w-full overflow-hidden rounded-lg border border-neutral-800">

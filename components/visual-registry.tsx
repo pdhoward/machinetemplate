@@ -13,9 +13,7 @@ import { Separator } from "@/components/ui/separator";
 /**
  * Visual Registry
  * ---------------
- * A simple name -> React component map used by VisualStage to render rich UI
- * panels. Components receive whatever was provided in `payload.props` from the
- * ShowArgs / descriptor UI template (e.g., props.intentId, props.quote, etc.).
+ * Responsive & mobile-first versions.
  */
 
 // ---- Public API -----------------------------------------------------------
@@ -26,9 +24,9 @@ const registry: Record<string, React.ComponentType<any>> = {
   catalog_results: CatalogResults,
   reservation_confirmation: ReservationConfirmation,
   room: RoomGallery,
-  video: VideoPlayer,           
+  video: VideoPlayer,
   image_viewer: ImageViewer,
-  media_gallery: MediaGallery,  
+  media_gallery: MediaGallery,
 };
 
 export function getVisualComponent(name: string) {
@@ -39,7 +37,6 @@ export function registerVisualComponent(name: string, comp: React.ComponentType<
   registry[name] = comp;
 }
 
-
 // ---- Utilities ------------------------------------------------------------
 
 function formatMoney(amount?: number | string, currency?: string) {
@@ -47,7 +44,6 @@ function formatMoney(amount?: number | string, currency?: string) {
   const value = typeof amount === "string" ? Number(amount) : amount;
   if (Number.isNaN(value)) return String(amount);
   const iso = currency || "USD";
-  // amount may be in cents based on upstream; try to detect if large
   const normalized = value > 999 ? value / 100 : value;
   try {
     return new Intl.NumberFormat(undefined, { style: "currency", currency: iso }).format(normalized);
@@ -55,7 +51,6 @@ function formatMoney(amount?: number | string, currency?: string) {
     return `${normalized.toFixed(2)} ${iso}`;
   }
 }
-
 
 // ---- Types shared by components ------------------------------------------
 
@@ -82,20 +77,29 @@ type PaymentFormProps = {
     address?: Address;
   };
   onSubmit?: (data: any) => void;
+  compact?: boolean;
 };
 
-function PaymentForm({ intentId, reservationId, amountCents, currency, prefill, onSubmit }: PaymentFormProps) {
+function PaymentForm({
+  intentId,
+  reservationId,
+  amountCents,
+  currency,
+  prefill,
+  onSubmit,
+  compact,
+}: PaymentFormProps) {
   const [loading, setLoading] = React.useState(false);
 
   return (
-    <Card className="bg-neutral-900 border-neutral-800">
-      <CardHeader>
-        <CardTitle className="text-base">Complete your payment</CardTitle>
-        <CardDescription className="text-xs text-neutral-400">
+    <Card className="bg-neutral-900 border-neutral-800 w-full mx-auto sm:max-w-[720px]">
+      <CardHeader className={compact ? "px-4 py-3" : undefined}>
+        <CardTitle className="text-base sm:text-lg">Complete your payment</CardTitle>
+        <CardDescription className="text-xs sm:text-sm text-neutral-400">
           Supports Visa, Mastercard, Amex, and debit cards. Your details are encrypted.
         </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className={compact ? "px-4 pt-0 pb-4" : undefined}>
         <form
           className="grid gap-3"
           onSubmit={async (e) => {
@@ -104,81 +108,73 @@ function PaymentForm({ intentId, reservationId, amountCents, currency, prefill, 
             const fd = new FormData(e.currentTarget as HTMLFormElement);
             const data = Object.fromEntries(fd.entries());
             try {
-              onSubmit?.({
-                ...data,
-                intentId,
-                reservationId,
-                amountCents,
-                currency,
-              });
-              // TODO: integrate your PSP card element + confirm logic here
+              onSubmit?.({ ...data, intentId, reservationId, amountCents, currency });
               await new Promise((r) => setTimeout(r, 600));
             } finally {
               setLoading(false);
             }
           }}
         >
-          {/* Amount summary (read-only) */}
           {(amountCents || currency) && (
-            <div className="mb-2 text-sm text-neutral-300">
+            <div className="mb-2 text-sm sm:text-base text-neutral-300">
               Amount: <span className="font-medium">{formatMoney(amountCents, currency)}</span>
-              {reservationId ? (
-                <span className="ml-2 text-neutral-500">(Reservation {reservationId})</span>
-              ) : null}
+              {reservationId ? <span className="ml-2 text-neutral-500">(Reservation {reservationId})</span> : null}
             </div>
           )}
 
           <div className="grid gap-2">
-            <Label htmlFor="name">Name on card</Label>
+            <Label htmlFor="name" className="text-xs sm:text-sm">Name on card</Label>
             <Input id="name" name="name" defaultValue={prefill?.name} required />
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email" className="text-xs sm:text-sm">Email</Label>
             <Input id="email" name="email" type="email" defaultValue={prefill?.email} required />
           </div>
 
           <div className="grid gap-2">
-            <Label htmlFor="phone">Phone</Label>
+            <Label htmlFor="phone" className="text-xs sm:text-sm">Phone</Label>
             <Input id="phone" name="phone" defaultValue={prefill?.phone} />
           </div>
 
           <Separator className="my-2 bg-neutral-800" />
 
           <div className="grid gap-2">
-            <Label htmlFor="line1">Address line 1</Label>
+            <Label htmlFor="line1" className="text-xs sm:text-sm">Address line 1</Label>
             <Input id="line1" name="line1" defaultValue={prefill?.address?.line1} />
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="line2">Address line 2</Label>
+            <Label htmlFor="line2" className="text-xs sm:text-sm">Address line 2</Label>
             <Input id="line2" name="line2" defaultValue={prefill?.address?.line2} />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+
+          {/* stack on mobile, split on sm+ */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="grid gap-2">
-              <Label htmlFor="city">City</Label>
+              <Label htmlFor="city" className="text-xs sm:text-sm">City</Label>
               <Input id="city" name="city" defaultValue={prefill?.address?.city} />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="region">State / Region</Label>
+              <Label htmlFor="region" className="text-xs sm:text-sm">State / Region</Label>
               <Input id="region" name="region" defaultValue={prefill?.address?.region} />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="grid gap-2">
-              <Label htmlFor="postal">Postal</Label>
+              <Label htmlFor="postal" className="text-xs sm:text-sm">Postal</Label>
               <Input id="postal" name="postal" defaultValue={prefill?.address?.postal} />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="country">Country (ISO-2)</Label>
+              <Label htmlFor="country" className="text-xs sm:text-sm">Country (ISO-2)</Label>
               <Input id="country" name="country" defaultValue={prefill?.address?.country} />
             </div>
           </div>
 
           <Separator className="my-2 bg-neutral-800" />
 
-          {/* PSP placeholder element */}
           <div className="grid gap-2">
-            <Label>Card details</Label>
+            <Label className="text-xs sm:text-sm">Card details</Label>
             <div className="bg-neutral-800 border border-neutral-700 rounded px-2 py-3 text-sm text-neutral-400">
               [ PSP card element here ]
             </div>
@@ -205,8 +201,7 @@ type Quote = {
   currency?: string;
   policy?: string;
 };
-
-function QuoteSummary({ quote }: { quote?: Quote }) {
+function QuoteSummary({ quote, compact }: { quote?: Quote; compact?: boolean }) {
   const items: { label: string; value?: React.ReactNode }[] = [
     { label: "Unit", value: quote?.unit },
     { label: "Check-in", value: quote?.check_in },
@@ -217,21 +212,24 @@ function QuoteSummary({ quote }: { quote?: Quote }) {
   ];
 
   return (
-    <Card className="bg-neutral-900 border-neutral-800">
-      <CardHeader>
-        <CardTitle className="text-base">Quote</CardTitle>
+    <Card className="bg-neutral-900 border-neutral-800 w-full mx-auto sm:max-w-[720px]">
+      <CardHeader className={compact ? "px-4 py-3" : undefined}>
+        <CardTitle className="text-base sm:text-lg">Quote</CardTitle>
         {quote?.policy ? (
-          <CardDescription className="whitespace-pre-wrap text-xs text-neutral-400">
+          <CardDescription className="whitespace-pre-wrap text-xs sm:text-sm text-neutral-400">
             {quote.policy}
           </CardDescription>
         ) : null}
       </CardHeader>
-      <CardContent>
-        <div className="grid gap-2 text-sm">
+      <CardContent className={compact ? "px-4 pt-0 pb-4" : undefined}>
+        <div className="grid gap-2 text-sm sm:text-base">
           {items.map((it) => (
-            <div key={it.label} className="flex items-center justify-between border-b border-neutral-800 py-2">
+            <div
+              key={it.label}
+              className="grid grid-cols-1 sm:grid-cols-2 gap-1 sm:gap-2 border-b border-neutral-800 py-2"
+            >
               <span className="text-neutral-400">{it.label}</span>
-              <span className="font-medium text-neutral-200">{it.value ?? "—"}</span>
+              <span className="font-medium text-neutral-200 break-words">{it.value ?? "—"}</span>
             </div>
           ))}
         </div>
@@ -242,18 +240,19 @@ function QuoteSummary({ quote }: { quote?: Quote }) {
 
 // ---- Catalog Results ------------------------------------------------------
 
-function CatalogResults({ items }: { items?: any[] }) {
+function CatalogResults({ items, compact }: { items?: any[]; compact?: boolean }) {
   const count = Array.isArray(items) ? items.length : 0;
   return (
-    <Card className="bg-neutral-900 border-neutral-800">
-      <CardHeader>
-        <CardTitle className="text-base">Catalog Results</CardTitle>
-        <CardDescription className="text-xs text-neutral-400">
+    <Card className="bg-neutral-900 border-neutral-800 w-full">
+      <CardHeader className={compact ? "px-4 py-3" : undefined}>
+        <CardTitle className="text-base sm:text-lg">Catalog Results</CardTitle>
+        <CardDescription className="text-xs sm:text-sm text-neutral-400">
           Found {count} item{count === 1 ? "" : "s"}. Ask to filter or show details.
         </CardDescription>
       </CardHeader>
-      <CardContent>
-        <ScrollArea className="h-[360px] pr-3">
+      <CardContent className={compact ? "px-4 pt-0 pb-4" : undefined}>
+        {/* mobile: use viewport-based cap; desktop: fixed cap ok */}
+        <ScrollArea className="max-h-[65dvh] sm:max-h-[360px] pr-2">
           <div className="grid gap-3">
             {count === 0 ? (
               <div className="text-sm text-neutral-400">No items to display.</div>
@@ -262,15 +261,19 @@ function CatalogResults({ items }: { items?: any[] }) {
                 <Card key={i} className="bg-neutral-950 border-neutral-800">
                   <CardContent className="py-3">
                     <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="text-sm font-medium text-neutral-100">{it.title || it.name || it.id || `Item ${i+1}`}</div>
-                        {it.type ? <div className="text-xs text-neutral-400 mt-0.5">{it.type}</div> : null}
+                      <div className="min-w-0">
+                        <div className="text-sm sm:text-base font-medium text-neutral-100 truncate">
+                          {it.title || it.name || it.id || `Item ${i + 1}`}
+                        </div>
+                        {it.type ? <div className="text-xs sm:text-sm text-neutral-400 mt-0.5">{it.type}</div> : null}
                         {it.description ? (
-                          <div className="text-xs text-neutral-400 mt-1 line-clamp-2">{it.description}</div>
+                          <div className="text-xs sm:text-sm text-neutral-400 mt-1 line-clamp-2">
+                            {it.description}
+                          </div>
                         ) : null}
                       </div>
                       {it.tags && Array.isArray(it.tags) ? (
-                        <div className="flex flex-wrap gap-1">
+                        <div className="flex flex-wrap gap-1 shrink-0 max-w-[50%] sm:max-w-none">
                           {it.tags.map((t: string) => (
                             <Badge key={t} variant="secondary" className="bg-neutral-800 text-neutral-300">
                               {t}
@@ -292,38 +295,48 @@ function CatalogResults({ items }: { items?: any[] }) {
 
 // ---- Reservation Confirmation --------------------------------------------
 
-function ReservationConfirmation({ reservation_id, unit_id, check_in, check_out }: {
+function ReservationConfirmation({
+  reservation_id,
+  unit_id,
+  check_in,
+  check_out,
+  compact,
+}: {
   reservation_id?: string;
   unit_id?: string;
   check_in?: string;
   check_out?: string;
+  compact?: boolean;
 }) {
+  const Row = ({
+    label,
+    value,
+    last,
+  }: {
+    label: string;
+    value?: React.ReactNode;
+    last?: boolean;
+  }) => (
+    <div className={["grid gap-1 sm:grid-cols-2 sm:items-baseline py-2", last ? "" : "border-b border-neutral-800"].join(" ")}>
+      <span className="text-neutral-400 text-sm sm:text-base">{label}</span>
+      <span className="font-medium text-neutral-200 break-words text-sm sm:text-base">{value ?? "—"}</span>
+    </div>
+  );
+
   return (
-    <Card className="bg-neutral-900 border-neutral-800">
-      <CardHeader>
-        <CardTitle className="text-base">Reservation confirmed</CardTitle>
-        <CardDescription className="text-xs text-neutral-400">
+    <Card className="bg-neutral-900 border-neutral-800 w-full mx-auto sm:max-w-[720px]">
+      <CardHeader className={compact ? "px-4 py-3" : undefined}>
+        <CardTitle className="text-base sm:text-lg">Reservation confirmed</CardTitle>
+        <CardDescription className="text-xs sm:text-sm text-neutral-400">
           We’ve sent a confirmation email with your reservation details.
         </CardDescription>
       </CardHeader>
-      <CardContent>
-        <div className="grid gap-2 text-sm">
-          <div className="flex items-center justify-between border-b border-neutral-800 py-2">
-            <span className="text-neutral-400">Reservation ID</span>
-            <span className="font-medium text-neutral-200">{reservation_id || "—"}</span>
-          </div>
-          <div className="flex items-center justify-between border-b border-neutral-800 py-2">
-            <span className="text-neutral-400">Unit</span>
-            <span className="font-medium text-neutral-200">{unit_id || "—"}</span>
-          </div>
-          <div className="flex items-center justify-between border-b border-neutral-800 py-2">
-            <span className="text-neutral-400">Check-in</span>
-            <span className="font-medium text-neutral-200">{check_in || "—"}</span>
-          </div>
-          <div className="flex items-center justify-between py-2">
-            <span className="text-neutral-400">Check-out</span>
-            <span className="font-medium text-neutral-200">{check_out || "—"}</span>
-          </div>
+      <CardContent className={compact ? "px-4 pt-0 pb-4" : undefined}>
+        <div className="grid gap-2">
+          <Row label="Reservation ID" value={reservation_id} />
+          <Row label="Unit" value={unit_id} />
+          <Row label="Check-in" value={check_in} />
+          <Row label="Check-out" value={check_out} last />
         </div>
       </CardContent>
     </Card>
@@ -332,15 +345,19 @@ function ReservationConfirmation({ reservation_id, unit_id, check_in, check_out 
 
 // ---- Room Gallery (tenant-aware) -----------------------------------------
 
+type VisualMedia =
+  | { kind: "image"; src: string; alt?: string; width?: number; height?: number; blurDataURL?: string }
+  | { kind: "video"; src: string; poster?: string };
+
 type RoomGalleryProps = {
   tenantId?: string;
   unitId?: string;
-  media?: VisualMedia[];   // preferred: mixed images/videos
-  gallery?: string[];      // legacy: array of image URLs
+  media?: VisualMedia[]; // preferred: mixed images/videos
+  gallery?: string[]; // legacy: array of image URLs
   title?: string;
   subtitle?: string;
+  compact?: boolean;
 };
-
 
 function RoomGallery({
   tenantId,
@@ -349,57 +366,44 @@ function RoomGallery({
   gallery,
   title = "Room gallery",
   subtitle,
+  compact,
 }: RoomGalleryProps) {
-  // Build a unified media list
-  const items: VisualMedia[] = Array.isArray(media) && media.length
-    ? media
-    : Array.isArray(gallery)
+  const items: VisualMedia[] =
+    Array.isArray(media) && media.length
+      ? media
+      : Array.isArray(gallery)
       ? gallery.map((src) => ({ kind: "image" as const, src }))
       : [];
 
-  const sub =
-    subtitle ??
-    (tenantId && unitId ? `${tenantId} · ${unitId}` : undefined);
+  const sub = subtitle ?? (tenantId && unitId ? `${tenantId} · ${unitId}` : undefined);
 
   return (
-    <Card className="bg-neutral-900 border-neutral-800">
-      <CardHeader>
-        <CardTitle className="text-base">{title}</CardTitle>
-        {sub ? (
-          <CardDescription className="text-xs text-neutral-400">
-            {sub}
-          </CardDescription>
-        ) : null}
+    <Card className="bg-neutral-900 border-neutral-800 w-full">
+      <CardHeader className={compact ? "px-4 py-3" : undefined}>
+        <CardTitle className="text-base sm:text-lg">{title}</CardTitle>
+        {sub ? <CardDescription className="text-xs sm:text-sm text-neutral-400">{sub}</CardDescription> : null}
       </CardHeader>
 
-      <CardContent>
+      <CardContent className={compact ? "px-4 pt-0 pb-4" : undefined}>
         {items.length === 0 ? (
-          <div className="text-sm text-neutral-400">
-            No media available.
-          </div>
+          <div className="text-sm text-neutral-400">No media available.</div>
         ) : (
           <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 md:grid-cols-3">
             {items.map((m, i) =>
               m.kind === "image" ? (
-                <div
-                  key={`img-${i}`}
-                  className="relative w-full overflow-hidden rounded-lg border border-neutral-800 bg-neutral-950"
-                >
+                <div key={`img-${i}`} className="relative w-full overflow-hidden rounded-lg border border-neutral-800 bg-neutral-950">
                   <div className="relative aspect-[4/3] w-full">
                     <Image
                       src={m.src}
                       alt={m.alt ?? `image ${i + 1}`}
                       fill
-                      sizes="(max-width: 768px) 100vw, (max-width: 1120px) 50vw, 33vw"
+                      sizes="(max-width: 640px) 100vw, (max-width: 1120px) 50vw, 33vw"
                       className="object-cover"
                     />
                   </div>
                 </div>
               ) : (
-                <div
-                  key={`vid-${i}`}
-                  className="relative w-full overflow-hidden rounded-lg border border-neutral-800 bg-neutral-950"
-                >
+                <div key={`vid-${i}`} className="relative w-full overflow-hidden rounded-lg border border-neutral-800 bg-neutral-950">
                   <div className="relative aspect-[4/3] w-full">
                     <video
                       controls
@@ -427,9 +431,17 @@ type ImageViewerProps = {
   alt?: string;
   width?: number;
   height?: number;
+  compact?: boolean;
 };
 
-function ImageViewer({ src = "/images/placeholder-room.jpg", alt = "image", width = 640, height = 420 }: ImageViewerProps) {
+function ImageViewer({
+  src = "/images/placeholder-room.jpg",
+  alt = "image",
+  width = 640,
+  height = 420,
+  compact,
+}: ImageViewerProps) {
+  // Use responsive container + explicit sizes to avoid layout shift and overflow on mobile
   return (
     <div className="relative w-full overflow-hidden rounded-lg border border-neutral-800 bg-neutral-950">
       <div className="relative">
@@ -438,7 +450,9 @@ function ImageViewer({ src = "/images/placeholder-room.jpg", alt = "image", widt
           alt={alt}
           width={width}
           height={height}
+          sizes="(max-width: 640px) 100vw, 640px"
           className="w-full h-auto object-cover"
+          priority={compact}
         />
       </div>
     </div>
@@ -447,11 +461,16 @@ function ImageViewer({ src = "/images/placeholder-room.jpg", alt = "image", widt
 
 // ====== VideoPlayer  ===================
 
-type VideoPlayerProps = { src?: string; poster?: string };
-function VideoPlayer({ src = "/videos/placeholder.mp4", poster }: VideoPlayerProps) {
+type VideoPlayerProps = { src?: string; poster?: string; compact?: boolean };
+function VideoPlayer({ src = "/videos/placeholder.mp4", poster, compact }: VideoPlayerProps) {
   return (
-    <div className="relative w-full mx-auto max-w-[800px]">
-      <div className="aspect-[4/3] max-h-[600px] w-full overflow-hidden rounded-lg border border-neutral-800 bg-neutral-950">
+    <div className="relative w-full mx-auto sm:max-w-[800px]">
+      <div
+        className={[
+          "w-full overflow-hidden rounded-lg border border-neutral-800 bg-neutral-950",
+          compact ? "aspect-[16/10] max-h-[60dvh]" : "aspect-[4/3] max-h-[70dvh] sm:max-h-[600px]",
+        ].join(" ")}
+      >
         <video
           controls
           preload="metadata"
@@ -467,25 +486,24 @@ function VideoPlayer({ src = "/videos/placeholder.mp4", poster }: VideoPlayerPro
   );
 }
 
-// ======MediaGallery (carousel) ======================================
+// ====== MediaGallery (carousel) ======================================
 
-type VisualMedia =
+type VisualMediaMG =
   | { kind: "image"; src: string; alt?: string; width?: number; height?: number }
   | { kind: "video"; src: string; poster?: string };
 
 type MediaGalleryProps = {
-  media?: VisualMedia[];           // <- provided via VisualStage props auto-pass
+  media?: VisualMediaMG[]; // provided via VisualStage props
   startIndex?: number;
   title?: string;
+  compact?: boolean;
 };
 
-function MediaGallery({ media = [], startIndex = 0, title, compact = false }: MediaGalleryProps & { compact?: boolean }) {
+function MediaGallery({ media = [], startIndex = 0, title, compact = false }: MediaGalleryProps) {
   const [idx, setIdx] = React.useState(Math.min(Math.max(0, startIndex), Math.max(0, media.length - 1)));
   const cur = media[idx];
-
   const items = Array.isArray(media) ? media : [];
 
-    // --- DEBUG ---
   if (process.env.NODE_ENV !== "production") {
     console.debug("[MediaGallery] received media:", media, "count:", items.length);
     if (items[0]) console.debug("[MediaGallery] first item:", items[0]);
@@ -500,24 +518,19 @@ function MediaGallery({ media = [], startIndex = 0, title, compact = false }: Me
     return () => window.removeEventListener("keydown", onKey);
   }, [media.length]);
 
-  if (media.length === 0) {
-    return <div className="text-sm text-neutral-400">No media available.</div>;
-  }
+  if (media.length === 0) return <div className="text-sm text-neutral-400">No media available.</div>;
 
   return (
-   <Card className="bg-neutral-900 border-neutral-800">
+    <Card className="bg-neutral-900 border-neutral-800">
       <CardHeader className={compact ? "px-4 py-3" : undefined}>
-        <CardTitle className="text-base">{title || "Media Gallery"}</CardTitle>
-        <CardDescription className="text-xs text-neutral-400">
-          {idx + 1} / {media.length}
-        </CardDescription>
+        <CardTitle className="text-base sm:text-lg">{title || "Media Gallery"}</CardTitle>
+        <CardDescription className="text-xs sm:text-sm text-neutral-400">{idx + 1} / {media.length}</CardDescription>
       </CardHeader>
 
       <CardContent className={compact ? "pt-0 px-4 pb-3" : undefined}>
-        {/* Main viewer: tighten max height when compact */}
         <div className="w-full mx-auto" style={{ maxWidth: compact ? 880 : 800 }}>
           <div className="relative w-full bg-neutral-950 rounded-lg border border-neutral-800 overflow-hidden">
-            <div className={compact ? "aspect-[16/10] max-h-[520px] w-full" : "aspect-[4/3] max-h-[600px] w-full"}>
+            <div className={compact ? "aspect-[16/10] max-h-[60dvh] sm:max-h-[520px] w-full" : "aspect-[4/3] max-h-[70dvh] sm:max-h-[600px] w-full"}>
               {cur?.kind === "image" ? (
                 <Image
                   src={cur.src}
@@ -541,7 +554,7 @@ function MediaGallery({ media = [], startIndex = 0, title, compact = false }: Me
               )}
             </div>
 
-            {/* Prev/Next buttons (unchanged) */}
+            {/* Prev/Next */}
             <div className="absolute inset-y-0 left-0 flex items-center">
               <button
                 className="m-2 rounded bg-black/50 hover:bg-black/70 text-white text-sm px-2 py-1"
@@ -563,7 +576,7 @@ function MediaGallery({ media = [], startIndex = 0, title, compact = false }: Me
           </div>
         </div>
 
-       {/* Thumbnails: tighter size when compact */}
+        {/* Thumbnails */}
         <div className="mt-3">
           <ScrollArea className="w-full">
             <div className="flex gap-2">
@@ -604,7 +617,6 @@ function MediaGallery({ media = [], startIndex = 0, title, compact = false }: Me
             </div>
           </ScrollArea>
         </div>
-
       </CardContent>
     </Card>
   );

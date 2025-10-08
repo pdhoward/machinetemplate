@@ -230,7 +230,7 @@ const App: React.FC = () => {
 
 return (
   <motion.div
-    className="fixed inset-0 bg-black bg-opacity-50 z-50 flex flex-col"
+    className="fixed inset-0 bg-black bg-opacity-50 z-40 flex flex-col"
     initial={{ opacity: 0 }}
     animate={{ opacity: 1 }}
     exit={{ opacity: 0 }}
