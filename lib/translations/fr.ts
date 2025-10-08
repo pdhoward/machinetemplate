@@ -6,7 +6,7 @@ export const fr = {
     },
     header: {
         title: "À propos",
-        about: "Galerie d'agents vocaux avec divers superpouvoirs.",
+        about:  "Livrer une voix pour chaque entreprise.",
         banner: "🎉 Agents vocaux pour les entreprises! ",
         bannerLink: "En savoir plus →",
         beta: "Bêta",
