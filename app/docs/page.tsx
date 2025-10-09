@@ -51,8 +51,8 @@ const components = {
 export default async function DocsPage() {
   const source = await fetchPrivateGithubFileRaw({
     owner: "pdhoward",
-    repo: "booking-engine",
-    path: "Instructions.mdx", // or .md if you prefer, MDXRemote handles both
+    repo: "machinetemplate",
+    path: "Instructions.mdx", // or .md , MDXRemote handles both
   });
  
   // console.log("MDX components:", Object.keys(components));
@@ -60,7 +60,7 @@ export default async function DocsPage() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted text-foreground">
     <DocsHeaderBar
-      githubUrl="https://github.com/pdhoward/booking-engine/blob/main/Instructions.mdx"
+      githubUrl="https://github.com/pdhoward/machinetemplate/blob/main/Instructions.mdx"
       subtitle="Instructions"
     />
     <main className="mx-auto max-w-3xl px-4 py-10">
