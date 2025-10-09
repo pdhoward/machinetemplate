@@ -1,0 +1,293 @@
+# VOX: Voice Agent Builder — Instructions
+
+### Every Business Needs a Voice
+
+<Callout title="Introduction">
+  This guide helps you create a custom voice agent for your business. Voice agents act as intelligent concierges, sales reps, or assistants—handling queries, accessing data, and performing actions like bookings or product searches. You'll define tools, connect to your data via APIs, and craft prompts to guide the agent's behavior.
+
+  **Assumptions**:
+  - Core tools (e.g., time checks, website scraping) are auto-provided by the platform.
+  - Use the JSON Editor tool to create/edit tool descriptors and prompts.
+  - Use the MongoDB Updater tool to store configurations in your tenant's database.
+  - Test directly by starting the agent or using provided test scripts.
+</Callout>
+
+<StepCard title="Understand Core Tools" description="These utility tools are available to every agent. Use them to enhance interactions without custom setup. Review the table below to see how they fit your use case.">
+  Core tools are pre-defined and fed into the agent's schema automatically. They handle common tasks like fetching time, scraping websites, or rendering visuals. You don't need to define them, but reference them in your prompt for the agent to use them.
+
+  Here's a summary table of core tools:
+
+  | Tool Name          | Description                                                                 | When to Use (Examples)                                                                 | Parameters |
+  |--------------------|-----------------------------------------------------------------------------|----------------------------------------------------------------------------------------|------------|
+  | getCurrentTime    | Returns the current local time and timezone.                                | User asks "What time is it?" or needs time-based info.                                 | None      |
+  | changeBackgroundColor | Toggles between light and dark UI themes.                                   | User says "Switch to dark mode" for accessibility or fun.                              | None      |
+  | partyMode         | Triggers confetti and animations for celebration.                           | User says "Celebrate!" after a successful booking or purchase.                         | None      |
+  | launchWebsite     | Opens a URL in a new browser tab.                                           | User asks "Open example.com" or to view external resources.                            | url (string, http/https) |
+  | copyToClipboard   | Copies text to the user's clipboard.                                        | User needs to copy a code, ID, or confirmation.                                        | text (string) |
+  | scrapeWebsite     | Fetches and returns website content as markdown/HTML for summarization.     | User asks to summarize a public site, e.g., "Scrape data.gov and tell me what's new." | url (string, http/https) |
+  | show_component    | Renders UI components like images, videos, payments, or catalogs.           | Display visuals, e.g., product images or a payment form. Supported components: payment_form, quote_summary, catalog_results, reservation_confirmation, room, video, image_viewer, media_gallery. | component_name (required), title, description, size (sm/md/lg/xl), url, media (array of image/video objects), props (object) |
+
+  **Tip**: The `scrapeWebsite` tool is powerful for dynamic data—e.g., a sales agent scraping recent product announcements from your site. For visuals, use `show_component` to display media fetched from your APIs.
+
+  To integrate: Reference these in your prompt's "capabilities.tools" section (see Step 4).
+</StepCard>
+
+<StepCard title="Define Custom Tools" description="Build HTTP-based tools to connect the agent to your APIs and databases. These allow actions like querying inventory, creating bookings, or searching products.">
+  Custom tools are defined as JSON descriptors using the HTTP Tool Schema. They specify API endpoints, parameters, and behaviors.
+
+  1. **Open the JSON Editor**: Use the JSON Editor tool to create a new descriptor file (e.g., `my-tools.json`).
+
+  2. **Define the Schema**: Each tool follows this structure (based on Zod schema for validation):
+     ```json
+     {
+       "kind": "http_tool",
+       "name": "your_tool_name",  // Unique, alphanumeric with ._- 
+       "description": "Brief tool purpose",
+       "parameters": {  // JSON Schema for args the agent must collect
+         "type": "object",
+         "properties": {
+           "param1": { "type": "string" },
+           // Add required fields, enums, patterns, etc.
+         },
+         "required": ["param1"]
+       },
+       "http": {
+         "method": "GET|POST|PUT|PATCH|DELETE",
+         "urlTemplate": "https://your-api.com/endpoint/{{param1}}",  // Use {{}} for interpolation
+         "headers": { "authorization": "Bearer {{secrets.api_key}}" },  // Use secrets for auth
+         "jsonBodyTemplate": { "key": "{{param1}}" },  // For POST/PUT bodies
+         "okField": "ok",  // Field in response indicating success
+         "timeoutMs": 8000,  // Max 120000
+         "pruneEmpty": true  // Remove empty fields from request
+       },
+       "ui": {  // Optional: Auto-open visuals on success/error
+         "onSuccess": {
+           "open": {
+             "component_name": "catalog_results",
+             "title": "Results",
+             "props": { "items": "{{response.items}}" }  // Interpolate response data
+           }
+         },
+         "onError": { /* Similar structure */ }
+       },
+       "enabled": true,
+       "priority": 5,  // Higher = preferred in conflicts
+       "version": 1
+     }
+     ```
+
+  3. **Examples**:
+     - **Booking a Room** (from Cypress Resort):
+       ```json
+       {
+         "name": "booking_reserve",
+         "description": "Create a reservation for a unit between dates.",
+         "parameters": {
+           "type": "object",
+           "required": ["tenant_id", "unit_id", "check_in", "check_out", "guest"],
+           "properties": {
+             "tenant_id": { "type": "string" },
+             "unit_id": { "type": "string" },
+             "check_in": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+             "check_out": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+             "guest": { /* Object with name, email, etc. */ }
+           }
+         },
+         "http": {
+           "method": "POST",
+           "urlTemplate": "https://your-booking-api.com/api/booking/{{tenant_id}}/reserve",
+           "jsonBodyTemplate": { /* Map params to body */ }
+         }
+       }
+       ```
+     - **Searching Products** (Generalized for e-commerce):
+       ```json
+       {
+         "name": "search_products",
+         "description": "Search inventory for products matching a query.",
+         "parameters": {
+           "type": "object",
+           "required": ["query"],
+           "properties": {
+             "query": { "type": "string" },
+             "limit": { "type": "number", "default": 10 }
+           }
+         },
+         "http": {
+           "method": "GET",
+           "urlTemplate": "https://your-store-api.com/products?q={{query}}&limit={{limit}}"
+         },
+         "ui": {
+           "onSuccess": {
+             "open": {
+               "component_name": "catalog_results",
+               "props": { "items": "{{response.products}}" }
+             }
+           }
+         }
+       }
+       ```
+     - **MongoDB Query** (for custom data fetches):
+       ```json
+       {
+         "name": "list_things_via_gateway",
+         "description": "Browse catalog items (e.g., products, events).",
+         "parameters": {
+           "type": "object",
+           "required": ["tenant_id"],
+           "properties": {
+             "tenant_id": { "type": "string" },
+             "type": { "type": "string" },
+             "q": { "type": "string" }
+           }
+         },
+         "http": {
+           "method": "POST",
+           "urlTemplate": "/api/mongo/gateway",
+           "jsonBodyTemplate": { "op": "find", "filter": { /* Mongo query */ } }
+         }
+       }
+       ```
+
+  4. **Save and Upload**: Use the MongoDB Updater tool to store the descriptors under your tenantId (e.g., collection: "tools").
+
+  **Tip**: Tools auto-populate the agent's decision-making. Ensure your APIs return structured JSON (e.g., { ok: true, data: {...} }) for easy handling.
+</StepCard>
+
+<StepCard title="Connect to Your Data" description="Expose data via APIs that tools can call. The agent uses returned objects to inform responses—e.g., describing products or checking availability.">
+  Your APIs provide the "data grounding" for the agent. Design them to return rich JSON objects.
+
+  1. **Build/Examine APIs**: Ensure endpoints match your tool descriptors. Use secure auth (e.g., Bearer tokens via secrets).
+
+  2. **Data Object Structure**: Responses should be detailed but concise. Example for a hotel room (adapt for products/recipes/events):
+     ```json
+     {
+       "name": "Ridge Villa",
+       "unitNumber": "1",
+       "type": "villa",
+       "description": "Magnificent stream view with hot tub and sauna.",
+       "rate": 685,
+       "currency": "USD",
+       "config": {
+         "squareFeet": 825,
+         "beds": [{ "size": "king", "count": 1 }],
+         "amenities": { "wellness": ["hot tub", "sauna"] }
+       },
+       "images": [
+         { "url": "https://example.com/image.jpg", "role": "gallery" }
+       ],
+       "policies": { "checkInTime": "15:00", "cancellation": { /* details */ } }
+     }
+     ```
+
+     - For a product catalog: Include price, stock, images, reviews.
+     - For recipes: Ingredients, steps, variations.
+
+  3. **Test API Calls**: Use the JSON Editor to mock requests, or start the agent and query it to trigger tools.
+
+  **Tip**: If data is in MongoDB, use gateway tools for direct queries. For web scraping, leverage core `scrapeWebsite`.
+</StepCard>
+
+<StepCard title="Craft the System Prompt" description="The prompt activates the agent, sets its personality, and guides tool usage/dialog flow.">
+  The prompt is a JSON object defining behavior, tool rules, and examples.
+
+  1. **Open the Prompt Editor**: Use the JSON Editor tool to create `agent-prompt.json`.
+
+  2. **Structure**:
+     ```json
+     {
+       "agent": {
+         "tenantId": "your-business-id",
+         "name": "Your Agent Name",
+         "tone": "warm, concise, professional",
+         "style_rules": [ /* Array of rules, e.g., "Always confirm details." */ ]
+       },
+       "capabilities": {
+         "tools": {
+           "your_custom_tool": {
+             "when": [ /* Triggers, e.g., "User asks for availability." */ ],
+             "args": [ /* Required params */ ],
+             "success_say": "How to summarize results.",
+             "handle_errors": { /* Error codes and responses */ }
+           },
+           // Include core tools as needed
+           "scrapeWebsite": { /* ... */ }
+         }
+       },
+       "policy": { /* Data rules, e.g., "Always check availability first." */ },
+       "dialog_flow": { /* High-level steps */ },
+       "schema_violation": [ /* Retry rules */ ],
+       "response_templates": { /* Pre-formatted responses */ },
+       "examples": [ /* User-agent interaction samples */ ]
+     }
+     ```
+
+  3. **Example** (Adapted from Cypress for a product sales agent):
+     ```json
+     {
+       "agent": {
+         "name": "Product Guru",
+         "tone": "helpful, enthusiastic",
+         "style_rules": ["Never invent stock levels—call tools."]
+       },
+       "capabilities": {
+         "tools": {
+           "search_products": {
+             "when": ["User asks about products or searches."],
+             "args": ["query"],
+             "success_say": "List top matches with prices and descriptions."
+           },
+           "show_component": {
+             "when": ["Display product images."],
+             "args": ["component_name", "media"]
+           }
+         }
+       },
+       "dialog_flow": {
+         "high_level": ["Search products, show visuals, guide to purchase."]
+       }
+     }
+     ```
+
+  4. **Save and Activate**: Use MongoDB Updater to store under tenantId. Restart the agent to apply.
+
+  **Tip**: Use examples to train flows, e.g., for a chef agent: Banter on ingredients by calling a recipe search tool.
+</StepCard>
+
+<StepCard title="Test and Iterate" description="Verify the agent's accuracy, tool usage, and responses.">
+  1. **Start the Agent**: Launch via the platform dashboard or command line.
+
+  2. **Run Tests**:
+     - Voice queries: "Book a room for Jan 15-18" (or your use case).
+     - Check logs for tool calls and responses.
+     - Use test scripts if available, or simulate via direct interaction.
+
+  3. **Debug**:
+     - If tools fail: Check schemas and APIs.
+     - Refine prompt for better flow.
+     - Expand visuals registry as needed (platform will update based on demand).
+
+  **Tip**: Assume good intent; the agent handles edgy queries factually. Expand core tools/visuals via feedback.
+</StepCard>
+
+---
+
+### Data Model (abridged)
+
+<Callout title="Tool Descriptor Model">
+  - `name`: Unique identifier  
+  - `parameters`: JSON Schema for args  
+  - `http`: Config for API call  
+  - `ui`: Auto-render visuals on outcomes
+</Callout>
+
+<Callout title="Prompt Model">
+  - `agent`: Personality and rules  
+  - `capabilities.tools`: Per-tool guidelines  
+  - `dialog_flow`: Conversation structure
+</Callout>
+
+<Callout title="Data Object Model">
+  - Flexible JSON from your APIs (e.g., products with name, price, images)  
+  - Used for grounding responses
+</Callout>

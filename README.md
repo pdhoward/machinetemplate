@@ -29,3 +29,8 @@ Note that google as a transporter requires a 16 character app password
 
 Sign into gmail account and got to
 https://myaccount.google.com/apppasswords
+
+### RESEARCH
+https://www.val.town/x/jubertioai/hello-realtime
+
+425-800-0073
