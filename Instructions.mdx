@@ -53,9 +53,9 @@
        },
        "http": {
          "method": "GET|POST|PUT|PATCH|DELETE",
-         "urlTemplate": "https://your-api.com/endpoint/\{\{param1\}\}",  // Use \{\{ \}\} for interpolation
-         "headers": { "authorization": "Bearer \{\{secrets.api_key\}\}" },  // Use secrets for auth
-         "jsonBodyTemplate": { "key": "\{\{param1\}\}" },  // For POST/PUT bodies
+         "urlTemplate": "https://your-api.com/endpoint/&#123;&#123;param1&#125;&#125;",  // Use &#123;&#123; &#125;&#125; for interpolation
+         "headers": { "authorization": "Bearer &#123;&#123;secrets.api_key&#125;&#125;" },  // Use secrets for auth
+         "jsonBodyTemplate": { "key": "&#123;&#123;param1&#125;&#125;" },  // For POST/PUT bodies
          "okField": "ok",  // Field in response indicating success
          "timeoutMs": 8000,  // Max 120000
          "pruneEmpty": true  // Remove empty fields from request
@@ -65,7 +65,7 @@
            "open": {
              "component_name": "catalog_results",
              "title": "Results",
-             "props": { "items": "\{\{response.items\}\}" }  // Interpolate response data
+             "props": { "items": "&#123;&#123;response.items&#125;&#125;" }  // Interpolate response data
            }
          },
          "onError": { /* Similar structure */ }
@@ -95,7 +95,7 @@
          },
          "http": {
            "method": "POST",
-           "urlTemplate": "https://your-booking-api.com/api/booking/\{\{tenant_id\}\}/reserve",
+           "urlTemplate": "https://your-booking-api.com/api/booking/&#123;&#123;tenant_id&#125;&#125;/reserve",
            "jsonBodyTemplate": { /* Map params to body */ }
          }
        }
@@ -115,13 +115,13 @@
          },
          "http": {
            "method": "GET",
-           "urlTemplate": "https://your-store-api.com/products?q= \{\{query\}\}&limit= \{\{limit\}\}"
+           "urlTemplate": "https://your-store-api.com/products?q=&#123;&#123;query&#125;&#125;&limit=&#123;&#123;limit&#125;&#125;"
          },
          "ui": {
            "onSuccess": {
              "open": {
                "component_name": "catalog_results",
-               "props": { "items": "\{\{response.products\}\}" }
+               "props": { "items": "&#123;&#123;response.products&#125;&#125;" }
              }
            }
          }
