@@ -1,4 +1,4 @@
-// app/docs/page.tsx  (SERVER component – no "use client")
+// app/docs/page.tsx
 import React from "react";
 import { MDXRemote } from "next-mdx-remote/rsc";
 import remarkGfm from "remark-gfm";
@@ -10,10 +10,11 @@ import {
   Pre, InlineCode, StepCard, Callout,
   Card, CardHeader, CardTitle, CardDescription, CardContent,
   Badge, Separator,
+  // NEW imports
+  MdxTable, MdxThead, MdxTbody, MdxTr, MdxTh, MdxTd,
 } from "@/components/docs/mdx-parts";
 import DocsHeaderBar from "@/components/docs/DocsHeaderBar";
 
-// Build the mapping HERE so it’s a plain, enumerable object in RSC.
 const components = {
   // Typography
   h1: (p: any) => <h1 {...p} className="mb-4 text-4xl font-bold tracking-tight" />,
@@ -34,17 +35,23 @@ const components = {
     />
   ),
   hr: () => <Separator className="my-8" />,
-  blockquote: (props: any) => (
-    <Callout title="Note">{props.children}</Callout>
-  ),
+  blockquote: (props: any) => (<Callout title="Note">{props.children}</Callout>),
   pre: Pre,
   code: InlineCode,
 
-  // Custom shortcodes you can use directly in MDX:
+  // Custom shortcodes
   StepCard,
   Callout,
 
-  // Optionally expose shadcn primitives to MDX by name:
+  // Styled markdown tables
+  table: MdxTable,
+  thead: MdxThead,
+  tbody: MdxTbody,
+  tr: MdxTr,
+  th: MdxTh,
+  td: MdxTd,
+
+  // Optional shadcn stuff in MDX
   Card, CardHeader, CardTitle, CardDescription, CardContent, Badge,
 } as const;
 
@@ -52,36 +59,38 @@ export default async function DocsPage() {
   const source = await fetchPrivateGithubFileRaw({
     owner: "pdhoward",
     repo: "machinetemplate",
-    path: "Instructions.mdx", // or .md , MDXRemote handles both
+    path: "Instructions.mdx",
   });
- 
-  // console.log("MDX components:", Object.keys(components));
-  
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted text-foreground">
-    <DocsHeaderBar
+      <DocsHeaderBar
       githubUrl="https://github.com/pdhoward/machinetemplate/blob/main/Instructions.mdx"
       subtitle="Instructions"
     />
-    <main className="mx-auto max-w-3xl px-4 py-10">
-      <article className="prose prose-zinc dark:prose-invert">
-        <MDXRemote
-          source={source}
-          components={components}
-          options={{
-            mdxOptions: {
-              remarkPlugins: [remarkGfm],
-              rehypePlugins: [
-                rehypeSlug,
-                [rehypeAutolinkHeadings, { behavior: "wrap" }],
-                [rehypeExternalLinks, { target: "_blank", rel: ["noopener", "noreferrer"] }],
-              ],
-            },
-          }}
-        />
-      </article>
-    </main>
+      <main className="mx-auto max-w-3xl px-4 py-10">
+       <article
+        className="prose prose-zinc dark:prose-invert max-w-none
+          prose-headings:scroll-mt-20
+          prose-h2:mt-12 prose-h2:pb-1 prose-h2:border-b
+          prose-th:whitespace-nowrap"
+      >
+          <MDXRemote
+            source={source}
+            components={components}
+            options={{
+              mdxOptions: {
+                remarkPlugins: [remarkGfm],
+                rehypePlugins: [
+                  rehypeSlug,
+                  [rehypeAutolinkHeadings, { behavior: "wrap" }],
+                  [rehypeExternalLinks, { target: "_blank", rel: ["noopener", "noreferrer"] }],
+                ],
+              },
+            }}
+          />
+        </article>
+      </main>
     </div>
   );
 }

@@ -27,7 +27,7 @@ export default function DocsHeaderBar({
             title="Home"
           >
             <CalendarIcon className="h-5 w-5" aria-hidden="true" />
-            <span className="font-semibold tracking-tight">Booking Engine</span>
+            <span className="font-semibold tracking-tight">Voice Agents for Business</span>
           </Link>
 
           {/* Divider dot + subtitle */}
