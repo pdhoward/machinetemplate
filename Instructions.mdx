@@ -258,48 +258,47 @@ Here’s a summary table of core tools:
 
   **Tip**: Use examples to train flows, e.g., for a chef agent: Banter on ingredients by calling a recipe search tool.
 
-
 <StepCard title="Test and Iterate" description="Verify the agent's accuracy, tool usage, and responses.">
-  Focus on validating real-world questions and whether the agent calls tools with correct arguments and handles failures gracefully. 
+  Focus on validating real-world questions and whether the agent calls tools with correct arguments and handles failures gracefully.
 </StepCard>
-  
-  1. **Start the Agent**: Launch via the platform dashboard or command line.
 
-  2. **Run Tests**:
-     - Voice queries: "Book a room for Jan 15-18" (or your use case).
-     - Check logs for tool calls and responses.
-     - Use test scripts if available, or simulate via direct interaction.
+**Test steps**
 
-  3. **Debug**:
-     - If tools fail: Check schemas and APIs.
-     - Refine prompt for better flow.
-     - Expand visuals registry as needed (platform will update based on demand).
+1. **Start the Agent**: Launch via the platform dashboard or command line.
+2. **Run Tests**:
+   - Voice queries: “Book a room for Jan 15–18” (or your use case).
+   - Check logs for tool calls and responses.
+   - Use test scripts if available, or simulate via direct interaction.
+3. **Debug**:
+   - If tools fail: Check schemas and APIs.
+   - Refine prompt for better flow.
+   - Expand visuals registry as needed (platform will update based on demand).
 
-  **Tip**: Assume good intent; the agent handles edgy queries factually. Expand core tools/visuals via feedback.
-
+**Tip**: Assume good intent; the agent handles edgy queries factually. Expand core tools/visuals via feedback.
 
 ---
 
 ### Data Model (abridged)
-<Callout title="Tool Descriptor Model"> 
- Overview of the fields commonly used when defining a tool descriptor. 
+
+<Callout title="Tool Descriptor Model">
+  Overview of the fields commonly used when defining a tool descriptor.
 </Callout>
 
-- name: Unique identifier
-- parameters: JSON Schema for args
-- http: Config for API call
-- ui: Auto-render visuals on outcomes
+- `name`: Unique identifier
+- `parameters`: JSON Schema for args
+- `http`: Config for API call
+- `ui`: Auto-render visuals on outcomes
 
-<Callout title="Prompt Model"> 
- The structure that sets personality, constraints, and how tools should be chosen. 
+<Callout title="Prompt Model">
+  The structure that sets personality, constraints, and how tools should be chosen.
 </Callout>
 
-- agent: Personality and rules
-- capabilities.tools: Per-tool guidelines
-- dialog_flow: Conversation structure
+- `agent`: Personality and rules
+- `capabilities.tools`: Per-tool guidelines
+- `dialog_flow`: Conversation structure
 
-<Callout title="Data Object Model"> 
- The flexible JSON returned by your APIs that the agent uses for grounding. 
+<Callout title="Data Object Model">
+  The flexible JSON returned by your APIs that the agent uses for grounding.
 </Callout>
 
 - Flexible JSON from your APIs (e.g., products with name, price, images)
