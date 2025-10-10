@@ -11,7 +11,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { MenuIcon } from "lucide-react";
 import Link from "next/link";
-import { siteConfig } from "@/config/site";
+import Image from 'next/image';
 import { Badge } from "./ui/badge";
 import { useTranslations } from "@/context/translations-context"
 
@@ -35,7 +35,15 @@ export function MobileNav() {
                 onClick={() => setOpen(false)}
                 className="flex items-center gap-3 text-2xl"
               >
-                  {siteConfig.name}
+                 <Image
+                    src="https://res.cloudinary.com/stratmachine/image/upload/v1592332363/machine/icon-512x512_zaffp5.png"
+                    alt="Strategic Machines Logo"
+                    width={40}
+                    height={40}
+                    className="h-10 w-10"
+                  />
+                <span className=" text-lg text-white">Strategic Machines</span>
+
                 <Badge variant="outline" className="text-normal">
                   {t('header.beta')}
                 </Badge>

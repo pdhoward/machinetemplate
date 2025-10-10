@@ -60,7 +60,7 @@ export default function DocsGateButton({
           <DialogHeader>
             <DialogTitle>Best viewed on desktop</DialogTitle>
             <DialogDescription>
-              The documentation is optimized for larger screens. On phones the layout can be cramped.
+              The documentation is optimized for larger screens. The content is dense, and not sized for mobile.
               You can still open it here, but we recommend a laptop or desktop for the best experience.
             </DialogDescription>
           </DialogHeader>

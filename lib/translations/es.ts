@@ -6,7 +6,7 @@ export const es = {
   },
   header: {
     title: "Acerca de",
-    about: "Entregando una voz para cada negocio.",
+    about: "Una voz para cada negocio.",
     banner: "🎉Agentes de voz para negocios!",
     bannerLink: "Saber más →",
     beta: "Beta",

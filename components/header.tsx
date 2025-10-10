@@ -44,7 +44,7 @@ export function Header() {
               className="text-lg font-medium tracking-tighter flex gap-1 items-center"
               whileHover={{ scale: 1.02 }}
             >
-                <Image
+              <Image
                 src="https://res.cloudinary.com/stratmachine/image/upload/v1592332363/machine/icon-512x512_zaffp5.png"
                 alt="Strategic Machines Logo"
                 width={40}
@@ -118,27 +118,7 @@ export function Header() {
           </Link>
 
           {/* ✅ Docs (gated on mobile) */}
-          <DocsGateButton />
-
-
-          {/* ✅ Docs */}
-          <Link
-            href="/docs"              // If your route is different, change this
-            aria-label="Open Docs"
-          >
-            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-              <Button
-                variant="outline"
-                size="sm"
-                className="flex gap-3 items-center max-md:h-9 max-md:w-9 max-md:px-0"
-                aria-label="Open Docs"
-              >
-                {/* If you have i18n strings, you can use t("header.docs") || "Docs" */}
-                <span className="hidden md:block text-xs">Docs</span>{" "}
-                <BookOpen />
-              </Button>
-            </motion.div>
-          </Link>
+          <DocsGateButton />         
 
           <ThemeSwitcher />
         </motion.div>
