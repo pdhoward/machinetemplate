@@ -13,11 +13,12 @@ import { Separator } from "@/components/ui/separator";
 // Simple code/pre wrappers
 export function Pre({ children }: { children: React.ReactNode }) {
   return (
-    <pre className="my-4 overflow-x-auto rounded-lg border bg-muted p-3 text-sm">
+    <pre className="my-4 overflow-x-auto rounded-lg border bg-muted p-3 text-xs sm:text-sm">
       {children}
     </pre>
   );
 }
+
 export function InlineCode(props: React.HTMLAttributes<HTMLElement>) {
   return (
     <code
@@ -31,15 +32,18 @@ export function InlineCode(props: React.HTMLAttributes<HTMLElement>) {
 export function StepCard(props: { title: string; description?: string; children?: React.ReactNode }) {
   const { title, description, children } = props;
   return (
-    <Card className="my-6 not-prose">
+    <Card className="my-5 sm:my-6 not-prose">
       <CardHeader>
-        <CardTitle className="text-xl">{title}</CardTitle>
-        {description ? <CardDescription>{description}</CardDescription> : null}
+        <CardTitle className="text-lg sm:text-xl">{title}</CardTitle>
+        {description ? <CardDescription className="text-sm sm:text-base">{description}</CardDescription> : null}
       </CardHeader>
-      <CardContent className="prose prose-zinc dark:prose-invert max-w-none">{children}</CardContent>
+      <CardContent className="prose prose-zinc dark:prose-invert max-w-none prose-xs sm:prose-base">
+        {children}
+      </CardContent>
     </Card>
   );
 }
+
 
 // Callout box
 export function Callout({ title = "Note", variant, children }: {
@@ -56,16 +60,13 @@ export function Callout({ title = "Note", variant, children }: {
 /* --- NEW: Styled table primitives for MDX markdown tables --- */
 
 export function MdxTable(props: React.HTMLAttributes<HTMLTableElement>) {
-  // Wrap the table so borders round correctly and it scrolls on mobile
   return (
     <div className="my-4 overflow-x-auto rounded-xl border bg-background/40 shadow-sm">
       <table
         {...props}
         className={cn(
-          "w-full border-collapse text-sm",
-          // remove prose default spacing that can misalign cells
-          "[&_*]:!my-0 [&_*]:!mt-0 [&_*]:!mb-0",
-          props.className
+          "w-full border-collapse text-xs sm:text-sm", // smaller on mobile
+          "[&_*]:!my-0 [&_*]:!mt-0 [&_*]:!mb-0"
         )}
       />
     </div>
@@ -89,9 +90,8 @@ export function MdxTh(props: React.ThHTMLAttributes<HTMLTableCellElement>) {
     <th
       {...props}
       className={cn(
-        "border px-3 py-2 text-left font-semibold align-middle",
-        "bg-muted/40",
-        props.className
+        "border px-2 sm:px-3 py-2 text-left font-semibold align-middle",
+        "bg-muted/40 break-words" // wrap on mobile
       )}
     />
   );
@@ -102,8 +102,7 @@ export function MdxTd(props: React.TdHTMLAttributes<HTMLTableCellElement>) {
     <td
       {...props}
       className={cn(
-        "border px-3 py-2 align-top",
-        props.className
+        "border px-2 sm:px-3 py-2 align-top break-words" // wrap long text/links
       )}
     />
   );
