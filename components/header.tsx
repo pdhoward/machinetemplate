@@ -13,6 +13,9 @@ import { LanguageSwitcher } from "@/components/language-switcher";
 import { useTranslations } from "@/context/translations-context";
 import { AccessGate } from "@/components/security/access-gate";
 
+import DocsGateButton from "@/components/docs/DocsGateButton";
+
+
 export function Header() {
   const { t } = useTranslations();
 
@@ -114,7 +117,11 @@ export function Header() {
             </motion.div>
           </Link>
 
-          {/* ✅ NEW: Docs */}
+          {/* ✅ Docs (gated on mobile) */}
+          <DocsGateButton />
+
+
+          {/* ✅ Docs */}
           <Link
             href="/docs"              // If your route is different, change this
             aria-label="Open Docs"
