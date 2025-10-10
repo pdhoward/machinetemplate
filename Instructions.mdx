@@ -155,8 +155,7 @@ Here’s a summary table of core tools:
 
   4. **Save and Upload**: Use the MongoDB Updater tool to store the descriptors under your tenantId (e.g., collection: "tools").
 
-  **Tip**: Tools auto-populate the agent's decision-making. Ensure your APIs return structured JSON (e.g., { ok: true, data: {...} }) for easy handling.
-
+  **Tip**: Tools auto-populate the agent's decision-making. Ensure your APIs return structured JSON (e.g., `{ ok: true, data: {...} }`) for easy handling.
 
 <StepCard title="Connect to Your Data" description="Expose data via APIs that tools can call. The agent uses returned objects to inform responses—e.g., describing products or checking availability.">
   Your APIs provide the "data grounding" for the agent. Design them to return rich JSON objects.
@@ -303,5 +302,5 @@ Here’s a summary table of core tools:
  The flexible JSON returned by your APIs that the agent uses for grounding. 
 </Callout>
 
--Flexible JSON from your APIs (e.g., products with name, price, images)
+- Flexible JSON from your APIs (e.g., products with name, price, images)
 - Used for grounding responses
