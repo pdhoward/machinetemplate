@@ -283,27 +283,25 @@ Here’s a summary table of core tools:
 
 ### Data Model (abridged)
 <Callout title="Tool Descriptor Model"> 
-Overview of the fields commonly used when defining a tool descriptor. 
+ Overview of the fields commonly used when defining a tool descriptor. 
 </Callout>
 
-name: Unique identifier
+- name: Unique identifier
+- parameters: JSON Schema for args
+- http: Config for API call
+- ui: Auto-render visuals on outcomes
 
-parameters: JSON Schema for args
+<Callout title="Prompt Model"> 
+ The structure that sets personality, constraints, and how tools should be chosen. 
+</Callout>
 
-http: Config for API call
+- agent: Personality and rules
+- capabilities.tools: Per-tool guidelines
+- dialog_flow: Conversation structure
 
-ui: Auto-render visuals on outcomes
+<Callout title="Data Object Model"> 
+ The flexible JSON returned by your APIs that the agent uses for grounding. 
+</Callout>
 
-<Callout title="Prompt Model"> The structure that sets personality, constraints, and how tools should be chosen. </Callout>
-
-agent: Personality and rules
-
-capabilities.tools: Per-tool guidelines
-
-dialog_flow: Conversation structure
-
-<Callout title="Data Object Model"> The flexible JSON returned by your APIs that the agent uses for grounding. </Callout>
-
-Flexible JSON from your APIs (e.g., products with name, price, images)
-
-Used for grounding responses
+-Flexible JSON from your APIs (e.g., products with name, price, images)
+- Used for grounding responses
