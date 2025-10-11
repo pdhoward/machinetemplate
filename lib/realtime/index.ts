@@ -305,6 +305,8 @@ public forceToolCall(name: string, args?: any, sayAfter?: string) {
       this.setStatus("CONNECTED");
       // Push current session config immediately (safe no-op if server already set it)
       this.updateSession({});
+       // Trigger initial response to make the agent speak the greeting
+      this.send({ type: "response.create" });
     };
     this.dc.onclose = () => this.setStatus("DISCONNECTED");
     this.dc.onerror = () => this.setStatus("ERROR");
