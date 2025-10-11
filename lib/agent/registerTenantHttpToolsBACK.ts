@@ -1,8 +1,6 @@
 
 import type { ToolDef } from "@/types/tools";
 import { applyTemplate } from "@/lib/utils";
-import { toast } from "sonner";
-
 
 
 type ShowArgsTemplate = {
@@ -85,117 +83,71 @@ function buildHttpExecutorViaProxy(
   return async (args: Record<string, any>) => {
     // Hit the server route so secrets stay server-side.
     const clientTraceId = `client_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-    const toastId = `tool_${clientTraceId}`;
-    let outcomeShown = false
+    console.log(`[registerTenantHttpTools - TOOL] ${clientTraceId} call`, { tool: descr.name, args });
 
-    // client-side timeout (respects descr.http.timeoutMs if present)
-    const controller = new AbortController();
-    const timeoutMs = (descr.http as any)?.timeoutMs && Number((descr.http as any).timeoutMs);
-    const timeout =
-      Number.isFinite(timeoutMs) && timeoutMs! > 0
-        ? setTimeout(() => controller.abort(), timeoutMs!)
-        : undefined;
+    const r = await fetch(`/api/tools/execute`, {
+      method: "POST",
+      headers: { 
+        "content-type": "application/json",
+        "x-trace-id": clientTraceId, // correlate with server logs if needed
+      },
+      body: JSON.stringify({ descriptor: descr, args }),
+    });
 
-    const loadingText = (descr as any).ui?.loadingMessage || `Running ${descr.name}…`;
-    toast.loading(loadingText, { id: toastId });
+    const status = r.status;
+    const text = await r.text();
 
-    let status = 0;
-    let payload: any = null;
-    let ok = false;
-
+    // Try to parse JSON, otherwise treat as text.
+    let payload: any = text;
     try {
-      console.log(`[registerTenantHttpTools - TOOL] ${clientTraceId} call`, { tool: descr.name, args });
-
-      const r = await fetch(`/api/tools/execute`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-trace-id": clientTraceId, // correlate with server logs if needed
-        },
-        body: JSON.stringify({ descriptor: descr, args }),
-        signal: controller.signal,
-      });
-
-      status = r.status;
-      const text = await r.text();
-
-      // Try to parse JSON, otherwise treat as text.
-      payload = text;
-      try {
-        payload = JSON.parse(text);
-      } catch {
-        /* leave as text */
-      }
-
-      // Decide success
-      ok = computeOk(status, payload, descr.http.okField);
-
-      // Build a templating context for UI
-      const ctx = { args, response: payload, status };
-
-      // Prefer UI instructions from the API; fallback to descriptor-defined
-      const responseUi: UIInstructionTemplate | undefined =
-        payload && typeof payload === "object" ? (payload.ui as any) : undefined;
-
-      const fallbackUi = ok ? descr.ui?.onSuccess : descr.ui?.onError;
-      const ui = responseUi ?? fallbackUi;
-
-      // Execute UI instructions
-      if (ui?.open && showOnStage) {
-        const templated = applyTemplate(ui.open, ctx);
-        try {
-          showOnStage(templated);
-        } catch (e) {
-          console.warn(`[http tool:${descr.name}] showOnStage failed:`, (e as any)?.message || e);
-        }
-      }
-
-      if (ui?.close && hideStage) {
-        try {
-          hideStage();
-        } catch (e) {
-          console.warn(`[http tool:${descr.name}] hideStage failed:`, (e as any)?.message || e);
-        }
-      }
-
-     // Toast outcome
-      if (ok) {
-        const successMsg =
-          (payload && typeof payload === "object" && (payload.message || payload.msg)) ||
-          `${descr.name} completed`;
-        toast.success(successMsg, { id: toastId, duration: 1500 }); // 👈 keep visible ~1.5s
-        outcomeShown = true;
-      } else {
-        const errorMsg =
-          (payload && typeof payload === "object" && (payload.error || payload.message)) ||
-          `HTTP ${status} from ${descr.name}`;
-        toast.error(errorMsg, { id: toastId, duration: 3000 }); // error usually a bit longer
-        outcomeShown = true;
-      }
-
-      // Return original tool result to the model (JSON if possible, else text)
-      return payload;
-    } catch (err: any) {
-      // AbortError or network failure
-      const aborted = err?.name === "AbortError";
-      const msg = aborted
-        ? `${descr.name} timed out`
-        : `Error running ${descr.name}: ${err?.message || String(err)}`;
-
-      // keep UI consistent on fatal error
-      try { hideStage?.(); } catch {}
-
-      toast.error(msg, { id: toastId, duration: 3000 });
-      outcomeShown = true;
-
-      return { ok: false, error: msg, status, };
-
-    } finally {
-      
-       if (!outcomeShown) {
-        toast.dismiss(toastId);
-       }
+      payload = JSON.parse(text);
+    } catch {
+      /* leave as text */
     }
+
+    // Decide success
+    const ok = computeOk(status, payload, descr.http.okField);
+
+    // Build a templating context for UI
+    const ctx = { args, response: payload, status };
+
+    // 1) Prefer UI instructions returned by the API (response.ui), if present.
+    //    Shape: { open?: {...}, close?: true } — same as our template type.
+    const responseUi: UIInstructionTemplate | undefined =
+      payload && typeof payload === "object" ? (payload.ui as any) : undefined;
+
+    // 2) Otherwise fall back to descriptor-defined UI instructions.
+    const fallbackUi =
+      ok ? descr.ui?.onSuccess : descr.ui?.onError;
+
+    const ui = responseUi ?? fallbackUi;
+
+    // Execute UI instructions
+    if (ui?.open && showOnStage) {
+      // Template all strings inside the open payload using ctx (args + response + status)
+      const templated = applyTemplate(ui.open, ctx);
+      try {
+        showOnStage(templated);
+      } catch (e) {
+        console.warn(
+          `[http tool:${descr.name}] showOnStage failed:`,
+          (e as any)?.message || e
+        );
+      }
+    }
+    if (ui?.close && hideStage) {
+      try {
+        hideStage();
+      } catch (e) {
+        console.warn(
+          `[http tool:${descr.name}] hideStage failed:`,
+          (e as any)?.message || e
+        );
+      }
+    }
+
+    // Return the original tool result to the model (JSON if possible, else text)
+    return payload;
   };
 }
 
