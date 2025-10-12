@@ -3,122 +3,123 @@
 
 import { useEffect, useRef } from "react";
 
-type ConvItem = { id: string; role: string; text?: string; timestamp: number };
+type ConvItem = { id: string; role: "user" | "assistant" | "tool" | "system"; text?: string; timestamp: number };
+
+const USER_PLACEHOLDER_RE = /^processing speech/i;
+const STABILIZE_MS = 400; // small wait so text can settle
 
 function postJSON(url: string, body: any) {
   return fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
-    keepalive: true, // hint for bg/tab close
+    keepalive: true,
   });
 }
 
 export function useTranscriptSink(conversation: ConvItem[]) {
-  const sentIdsRef = useRef<Set<string>>(new Set());
-  const queueRef = useRef<ConvItem[]>([]);
-  const timerRef = useRef<number | null>(null);
+  const sentIds = useRef<Set<string>>(new Set());
+  const queue = useRef<ConvItem[]>([]);
+  const debounceTimer = useRef<number | null>(null);
+  const finalizedOnce = useRef(false);
 
-  // prevent multiple finalize beacons (pagehide + visibilitychange can both fire)
-  const finalizedOnceRef = useRef(false);
+  // track first time we saw this id with non-empty text
+  const firstSeenAt = useRef<Map<string, number>>(new Map());
+  // track last text per id (so we don’t “stabilize” on a changing text)
+  const lastText = useRef<Map<string, string>>(new Map());
 
-  // --- normal streaming append (debounced) ---
+  const flushQueue = async (useBeacon = false) => {
+    if (debounceTimer.current) {
+      window.clearTimeout(debounceTimer.current);
+      debounceTimer.current = null;
+    }
+    const batch = queue.current.splice(0, queue.current.length);
+    if (!batch.length) return;
+
+    const payload = {
+      messages: batch.map((m) => ({
+        id: m.id,
+        role: m.role,
+        text: m.text,
+        ts: m.timestamp,
+      })),
+    };
+
+    if (useBeacon && navigator.sendBeacon) {
+      const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+      navigator.sendBeacon("/api/transcripts/append", blob);
+      return;
+    }
+    try {
+      await postJSON("/api/transcripts/append", payload);
+    } catch {}
+  };
+
+  const finalizeNow = async (useBeacon = false) => {
+    if (finalizedOnce.current) return;
+    finalizedOnce.current = true;
+    await flushQueue(useBeacon);
+    if (useBeacon && navigator.sendBeacon) {
+      navigator.sendBeacon("/api/transcripts/finalize", new Blob([], { type: "application/json" }));
+      return;
+    }
+    try {
+      await fetch("/api/transcripts/finalize", { method: "POST", keepalive: true });
+    } catch {}
+  };
+
   useEffect(() => {
+    const now = Date.now();
+
     for (const m of conversation) {
       if (!m?.id) continue;
-      if (!sentIdsRef.current.has(m.id)) {
-        sentIdsRef.current.add(m.id);
-        queueRef.current.push(m);
+      if (sentIds.current.has(m.id)) continue;
+
+      const text = (m.text ?? "").trim();
+      if (!text) continue; // don’t persist empties
+
+      // Skip obvious placeholder
+      if (m.role === "user" && USER_PLACEHOLDER_RE.test(text)) continue;
+
+      // stabilization logic: if text changed, reset the clock
+      const prev = lastText.current.get(m.id);
+      if (prev !== text) {
+        lastText.current.set(m.id, text);
+        firstSeenAt.current.set(m.id, now);
+        continue; // see the same text once more (after STABILIZE_MS)
       }
+
+      // wait a tiny bit so the final text “sticks”
+      const seenAt = firstSeenAt.current.get(m.id) ?? now;
+      if (now - seenAt < STABILIZE_MS) continue;
+
+      // looks stable — enqueue and mark sent
+      queue.current.push({ ...m, text });
+      sentIds.current.add(m.id);
+
+      // debounce writes
+      if (debounceTimer.current) window.clearTimeout(debounceTimer.current);
+      debounceTimer.current = window.setTimeout(() => {
+        void flushQueue(false);
+      }, 700) as unknown as number;
     }
 
-    // debounce flush (~700ms)
-    if (timerRef.current) window.clearTimeout(timerRef.current);
-    timerRef.current = window.setTimeout(async () => {
-      const batch = queueRef.current.splice(0, queueRef.current.length);
-      if (!batch.length) return;
-      try {
-        await postJSON("/api/transcripts/append", {
-          messages: batch.map((m) => ({
-            id: m.id,
-            role: m.role,
-            text: m.text,
-            ts: m.timestamp,
-          })),
-        });
-      } catch {
-        // best-effort; next messages still get queued
-      }
-    }, 700);
-
     return () => {
-      if (timerRef.current) {
-        window.clearTimeout(timerRef.current);
-        timerRef.current = null;
+      if (debounceTimer.current) {
+        window.clearTimeout(debounceTimer.current);
+        debounceTimer.current = null;
       }
     };
   }, [conversation]);
 
-  // --- helpers for tab-close/page-hide ---
-
-  // Flush any queued messages synchronously via sendBeacon/keepalive
-  const flushQueuedSync = () => {
-    // stop any pending debounce so those messages move into the queue
-    if (timerRef.current) {
-      window.clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-
-    const batch = queueRef.current.splice(0, queueRef.current.length);
-    if (!batch.length) return;
-
-    const blob = new Blob(
-      [
-        JSON.stringify({
-          messages: batch.map((m) => ({
-            id: m.id,
-            role: m.role,
-            text: m.text,
-            ts: m.timestamp,
-          })),
-        }),
-      ],
-      { type: "application/json" }
-    );
-
-    if (navigator.sendBeacon?.("/api/transcripts/append", blob)) {
-      return;
-    }
-    // Fallback
-    postJSON("/api/transcripts/append", { messages: batch }).catch(() => {});
-  };
-
-  const sendFinalize = () => {
-    if (finalizedOnceRef.current) return;
-    finalizedOnceRef.current = true;
-
-    const empty = new Blob([], { type: "application/json" });
-    if (navigator.sendBeacon?.("/api/transcripts/finalize", empty)) {
-      return;
-    }
-    // Fallback
-    postJSON("/api/transcripts/finalize", {}).catch(() => {});
-  };
-
-  const flushAndFinalize = () => {
-    flushQueuedSync();
-    sendFinalize();
-  };
-
-  // --- reliable finalize on page lifecycle ---
+  // finalize on close/background
   useEffect(() => {
-    const onPageHide = () => flushAndFinalize(); // most reliable on iOS/Safari
+    const onPageHide = () => finalizeNow(true);
     const onVisibilityChange = () => {
-      if (document.visibilityState === "hidden") flushAndFinalize();
+      if (document.visibilityState === "hidden") finalizeNow(true);
     };
-    const onBeforeUnload = () => flushAndFinalize(); // extra safety on desktop
+    const onBeforeUnload = () => finalizeNow(true);
 
-    // capture:true improves chances this runs before page is frozen
     window.addEventListener("pagehide", onPageHide, { capture: true });
     document.addEventListener("visibilitychange", onVisibilityChange);
     window.addEventListener("beforeunload", onBeforeUnload);
@@ -129,4 +130,9 @@ export function useTranscriptSink(conversation: ConvItem[]) {
       window.removeEventListener("beforeunload", onBeforeUnload);
     };
   }, []);
+
+  return {
+    flushNow: () => flushQueue(false),
+    finalizeNow: () => finalizeNow(false),
+  };
 }
