@@ -18,8 +18,11 @@ import {
 
 import { Send } from "lucide-react"; 
 import { motion } from "framer-motion";
+
 import { useToolsFunctions } from "@/hooks/use-tools";
 import { useVisualFunctions } from "@/hooks/use-visuals";
+import { useTranscriptSink } from "@/hooks/use-transcript-sink";
+
 import {Diagnostics} from "@/components/diagnostics"
 
 import { fetchTenantHttpTools } from "@/lib/registry/fetchTenantTools";
@@ -49,6 +52,7 @@ const App: React.FC = () => {
   
   const toolsFunctions = useToolsFunctions(); //locally defined utility tools in hook
   const visualFunction = useVisualFunctions({stageRef}); //locally defined visual UI tool in hook
+  
 
  /*
   Wrap the stageRef with a stable function and use that in Registering 
@@ -81,6 +85,37 @@ const App: React.FC = () => {
     setCallbacks, 
     getClient,
   } = useRealtime();
+  
+    // transcript conversation hook to post transcripts to mongo
+    useTranscriptSink(conversation as any);
+
+    // capture transcripts to mongo when browser closed or tab hidden
+    useEffect(() => {
+      const finalize = () => {
+        // Fire-and-forget; sendBeacon-friendly if you want
+        navigator.sendBeacon?.(
+          "/api/transcripts/finalize",
+          new Blob([], { type: "application/json" })
+        );
+      };
+
+      // Most reliable on mobile/Safari
+      const onPageHide = () => finalize();
+
+      // Fallback when tab becomes hidden
+      const onVisibilityChange = () => {
+        if (document.visibilityState === "hidden") finalize();
+      };
+
+      window.addEventListener("pagehide", onPageHide, { capture: true });
+      document.addEventListener("visibilitychange", onVisibilityChange);
+
+      return () => {
+        window.removeEventListener("pagehide", onPageHide, { capture: true } as any);
+        document.removeEventListener("visibilitychange", onVisibilityChange);
+      };
+    }, []);
+
    
     // Push initial agent config and whenever it changes
      useEffect(() => {
@@ -206,8 +241,13 @@ const App: React.FC = () => {
   };
 
   const onStartCall = () => connect();
-  const onEndCall = () => disconnect();
-  const onEndSession = () => disconnect();   
+  const onEndCall = async () => {
+    try {
+      await fetch("/api/transcripts/finalize", { method: "POST" });
+    } catch {}
+    disconnect();
+  };
+  const onEndSession = onEndCall; 
 
   // function passed to the transcript trigger
   const downloadTranscription = () => {

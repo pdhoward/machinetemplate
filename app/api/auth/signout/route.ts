@@ -1,5 +1,5 @@
 // app/api/auth/signout/route.ts
-import { NextResponse } from "next/server";
+import { NextResponse, NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
@@ -9,19 +9,11 @@ function sha256Hex(s: string) {
   return crypto.createHash("sha256").update(s).digest("hex");
 }
 
-/** If you already have this elsewhere, import it instead */
-async function getTenantMongoSecrets(tenantId: string | null): Promise<{ uri: string; dbName: string }> {
-  const uri = process.env.DB || "";
-  const dbName = process.env.MAINDBNAME || "";
-  if (!uri || !dbName) throw new Error("Missing Mongo credentials in environment variables");
-  return { uri, dbName };
-}
-
-export async function POST() {
+export async function POST(req: NextRequest) {
   const c = await cookies();
   const token = c.get("tenant_session")?.value || null;
 
-  // Always clear cookie regardless of DB update outcome
+  // Always clear the cookie first (client locked out regardless of DB outcome)
   c.set("tenant_session", "", {
     httpOnly: true,
     secure: true,
@@ -30,30 +22,34 @@ export async function POST() {
     maxAge: 0,
   });
 
-  if (!token) {
-    return NextResponse.json({ ok: true });
-  }
+  if (!token) return NextResponse.json({ ok: true });
 
-  // Try to verify (best), then decode (fallback) to recover tenantId
+  // We don’t *need* tenantId to finalize; we use the session token hash
+  const tokenHash = sha256Hex(token);
+
+  // (Optional) Try to decode to log or for analytics
   let tenantId: string | null = null;
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET!) as any;
-    tenantId = payload?.tenantId ?? null;
+    tenantId = (jwt.verify(token, process.env.JWT_SECRET!) as any)?.tenantId ?? null;
   } catch {
-    try {
-      const payload = jwt.decode(token) as any;
-      tenantId = payload?.tenantId ?? null;
-    } catch {
-      tenantId = null;
-    }
+    try { tenantId = (jwt.decode(token) as any)?.tenantId ?? null; } catch {}
   }
 
   try {
-    const tokenHash = sha256Hex(token);
-    const { uri, dbName } = await getTenantMongoSecrets(tenantId);
-    const { db } = await getMongoConnection(uri, dbName);
+    const { db } = await getMongoConnection(process.env.DB!, process.env.MAINDBNAME!);
+    const now = new Date();
 
-    // Find the active session by token hash and close it
+    // 1) Finalize any open transcript chunks for this session (idempotent)
+    await db.collection("user_transcripts").updateMany(
+      {
+        kind: "user_transcript_chunk",
+        sessionTokenHash: tokenHash,
+        finalizedAt: { $exists: false },
+      },
+      { $set: { finalizedAt: now, updatedAt: now } }
+    );
+
+    // 2) Close the auth session (also idempotent: only if active)
     const doc = await db.collection("auth").findOne({
       kind: "otp_session",
       sessionTokenHash: tokenHash,
@@ -61,10 +57,8 @@ export async function POST() {
     });
 
     if (doc) {
-      const now = new Date();
       const started = doc.sessionIssuedAt ? new Date(doc.sessionIssuedAt) : now;
       const durationSec = Math.max(0, Math.floor((now.getTime() - started.getTime()) / 1000));
-
       await db.collection("auth").updateOne(
         { _id: doc._id },
         {
@@ -78,7 +72,7 @@ export async function POST() {
       );
     }
   } catch {
-    // Swallow DB errors here; cookie is already cleared
+    // swallow DB errors; cookie is already cleared
   }
 
   return NextResponse.json({ ok: true });

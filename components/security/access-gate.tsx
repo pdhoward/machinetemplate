@@ -152,6 +152,7 @@ export function AccessGate() {
     setError(null);
     setSigningOut(true);
     try {
+      fetch("/api/transcripts/finalize", { method: "POST" }), // capture transcripts
       await fetch("/api/auth/signout", { method: "POST" });
     } catch (e: any) {
       // even if API errors, clear local token so UI locks down
