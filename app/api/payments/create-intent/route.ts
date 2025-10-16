@@ -1,64 +1,68 @@
-// app/api/payments/create-intent/route.ts
+// app/api/tools/payments/create-intent/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
-import getMongoConnection  from "@/db/connections";
+import { PaymentsCreateIntentInput } from "@/types/tools";
+import getMongoConnection from "@/db/connections";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: "2024-06-20" });
+const stripe = new Stripe(process.env.STRIPE_VOX_SECRET_KEY!);
 
 export async function POST(req: NextRequest) {
   try {
-    const { tenantId, reservationId, amountCents, currency = "USD", customer } = await req.json();
-
-    if (!tenantId || !amountCents) {
-      return NextResponse.json({ error: "tenantId and amountCents are required" }, { status: 400 });
+    const body = await req.json();
+    const parsed = PaymentsCreateIntentInput.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json({ error: "invalid_input", issues: parsed.error.issues }, { status: 400 });
     }
+    const { tenant_id, amount_cents, currency, reservation_id, customer } = parsed.data;
 
-    // (Optional) create/reuse a Stripe Customer keyed by email+tenant
+    // create/reuse customer (optional)
     let customerId: string | undefined;
     if (customer?.email) {
       const search = await stripe.customers.search({
-        query: `email:'${customer.email.replace(/'/g, "\\'")}' AND metadata['tenantId']:'${tenantId}'`,
+        query: `email:'${customer.email.replace(/'/g, "\\'")}' AND metadata['tenantId']:'${tenant_id}'`,
       });
-      const existing = search.data[0];
-      if (existing) {
-        customerId = existing.id;
-      } else {
+      customerId = search.data[0]?.id;
+      if (!customerId) {
         const created = await stripe.customers.create({
           email: customer.email,
           name: customer.name,
           phone: customer.phone,
-          metadata: { tenantId },
+          metadata: { tenantId: tenant_id },
         });
         customerId = created.id;
       }
     }
 
     const intent = await stripe.paymentIntents.create({
-      amount: amountCents,
+      amount: amount_cents,
       currency,
       customer: customerId,
       automatic_payment_methods: { enabled: true },
-      metadata: {
-        tenantId,
-        reservationId: reservationId ?? "",
-      },
+      metadata: { tenantId: tenant_id, reservationId: reservation_id ?? "" },
     });
 
-    // (Optional) record a pending payment doc
+    // upsert a pending payment row
     const { db } = await getMongoConnection(process.env.DB!, process.env.MAINDBNAME!);
-    await db.collection("payments").insertOne({
-      tenantId,
-      reservationId: reservationId ?? null,
-      stripePaymentIntentId: intent.id,
-      status: intent.status,
-      amountCents,
-      currency,
-      customerEmail: customer?.email ?? null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
+    await db.collection("payments").updateOne(
+      { stripePaymentIntentId: intent.id },
+      {
+        $setOnInsert: {
+          tenantId: tenant_id,
+          reservationId: reservation_id ?? null,
+          amountCents: amount_cents,
+          currency,
+          createdAt: new Date(),
+        },
+        $set: { status: intent.status, updatedAt: new Date() },
+      },
+      { upsert: true }
+    );
 
-    return NextResponse.json({ clientSecret: intent.client_secret });
+    return NextResponse.json({
+      clientSecret: intent.client_secret,
+      paymentIntentId: intent.id,
+      status: intent.status,
+    });
   } catch (err: any) {
     return NextResponse.json({ error: err.message || "server_error" }, { status: 500 });
   }

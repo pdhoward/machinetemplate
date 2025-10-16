@@ -1,3 +1,24 @@
+
+import { z } from "zod";
+
+export const PaymentsCreateIntentInput = z.object({
+  tenant_id: z.string(),
+  amount_cents: z.number().int().positive(),
+  currency: z.string().default("USD"),
+  reservation_id: z.string().optional(),
+  customer: z
+    .object({
+      name: z.string().optional(),
+      email: z.string().email().optional(),
+      phone: z.string().optional(),
+    })
+    .optional(),
+});
+
+export type PaymentsCreateIntentInput = z.infer<typeof PaymentsCreateIntentInput>;
+
+
+
 export type ToolDef = {
   type: "function";
   name: string;
@@ -12,24 +33,76 @@ export const coreTools: ToolDef[] = [
    // --------------------------------------------------------------------------
   // Visuals
   // --------------------------------------------------------------------------
-  {
-    type: "function",
-    name: "show_component",
-    description: "Display a UI component (image/video/panel) by name.",
-    parameters: {
-      type: "object",
-      properties: {
-        component_name: { type: "string", description: "Component key to display" },
-        title:          { type: "string" },
-        description:    { type: "string" },
-        props:          { type: "object" },
-        media:          { type: "object" },
-        url:            { type: "string" }
+ {
+  type: "function",
+  name: "show_component",
+  description: "Render a visual panel on the stage.",
+  strict: true,
+  parameters: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      component_name: {
+        type: "string",
+        enum: [
+          "payment_form",
+          "quote_summary",
+          "catalog_results",
+          "reservation_confirmation",
+          "room",
+          "video",
+          "image_viewer",
+          "media_gallery"
+        ]
       },
-      required: ["component_name"],
-      additionalProperties: true,
+      intent: {
+        type: "string",
+        enum: ["payment","quote","reservation_confirmation","results","room","media","video","image"]
+      },
+      title: { type: "string" },
+      description: { type: "string" },
+      size: { type: "string", enum: ["sm","md","lg","xl"] },
+      url: { type: "string" },
+      media: {
+        anyOf: [
+          {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              kind: { type: "string", enum: ["image", "video"] },
+              src: { type: "string" },
+              alt: { type: "string" },
+              width: { type: "number" },
+              height: { type: "number" },
+              poster: { type: "string" }
+            },
+            required: ["kind", "src"]
+          },
+          {
+            type: "array",
+            minItems: 1,
+            items: {
+              type: "object",
+              additionalProperties: false,
+              properties: {
+                kind: { type: "string", enum: ["image", "video"] },
+                src: { type: "string" },
+                alt: { type: "string" },
+                width: { type: "number" },
+                height: { type: "number" },
+                poster: { type: "string" }
+              },
+              required: ["kind", "src"]
+            }
+          }
+        ]
+      },
+      props: { type: "object", additionalProperties: true }
     },
-  },  
+    required: ["component_name"]
+  }
+},
+
    // --------------------------------------------------------------------------
   // Local utility tools (mapped via nameMap in your App)
   // --------------------------------------------------------------------------
@@ -128,84 +201,37 @@ export const coreTools: ToolDef[] = [
       additionalProperties: false,
     },
   },
-
-  // showComponent 
-
-  {
+  /*
+    STRIPE TOOLING
+  */
+  
+{
   type: "function",
-  name: "show_component",
-  description: "Render a visual panel on the stage.",
-  strict: true, // ✅ enforce schema adherence
+  name: "payments_create_intent",
+  description: "Create a Stripe PaymentIntent and return clientSecret for the payment_form visual.",
+  strict: true,
   parameters: {
     type: "object",
     additionalProperties: false,
     properties: {
-      component_name: {
-        type: "string",
-        enum: [
-          "payment_form",
-          "quote_summary",
-          "catalog_results",
-          "reservation_confirmation",
-          "room",
-          "video",
-          "image_viewer",
-          "media_gallery",
-        ],
-      },
-      // Optional routing hint the model can set
-      intent: {
-        type: "string",
-        enum: ["payment","quote","reservation_confirmation","results","room","media","video","image"],
-      },
-      title: { type: "string" },
-      description: { type: "string" },
-      size: { type: "string", enum: ["sm","md","lg","xl"] },
-      url: { type: "string" },
-      // NOTE: media can be one item or an array; both branches are strict
-      media: {
-        anyOf: [
-          {
-            type: "object",
-            additionalProperties: false,
-            properties: {
-              kind: { type: "string", enum: ["image", "video"] },
-              src: { type: "string" },
-              alt: { type: "string" },
-              width: { type: "number" },
-              height: { type: "number" },
-              poster: { type: "string" },
-            },
-            required: ["kind", "src"],
-          },
-          {
-            type: "array",
-            minItems: 1,
-            items: {
-              type: "object",
-              additionalProperties: false,
-              properties: {
-                kind: { type: "string", enum: ["image", "video"] },
-                src: { type: "string" },
-                alt: { type: "string" },
-                width: { type: "number" },
-                height: { type: "number" },
-                poster: { type: "string" },
-              },
-              required: ["kind", "src"],
-            },
-          },
-        ],
-      },
-      // forward-compatible for your components; keep strict at this level too
-      props: {
+      tenant_id: { type: "string" },
+      amount_cents: { type: "integer", minimum: 1 },
+      currency: { type: "string", default: "USD" },
+      reservation_id: { type: "string" },
+      customer: {
         type: "object",
-        additionalProperties: true
+        additionalProperties: false,
+        properties: {
+          name: { type: "string" },
+          email: { type: "string", format: "email" },
+          phone: { type: "string" }
+        },
+        required: []
       }
     },
-    // Only require the fields you truly need for a minimal render
-    required: ["component_name"]
+    required: ["tenant_id", "amount_cents"]
   }
 }
+
 
 ];
