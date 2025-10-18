@@ -165,7 +165,7 @@ export function Diagnostics({ status, volume, events, getClient }: Props) {
         ) : (
           // Footer (short)
           <div className="border-t border-neutral-800 bg-neutral-900/90 backdrop-blur-sm">
-            <div className="px-3 py-1.5 text-[12px] text-neutral-300 flex items-center justify-between">
+            <div className="px-3 py-1.5 text-[10px] text-neutral-300 flex items-center justify-between">
               <span>
                 © 2024 Strategic Machines.{" "}
                 <span className="hidden sm:inline">Built in Austin, Texas.</span>

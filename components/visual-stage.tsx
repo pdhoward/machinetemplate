@@ -30,6 +30,7 @@ type Props = {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   payload: VisualPayload | null;
+  onReplace?: (next: VisualPayload) => void;
 };
 
 // Desktop/tablet width caps (applied at sm+)
@@ -78,7 +79,7 @@ class VisualErrorBoundary extends React.Component<{ children: React.ReactNode },
   }
 }
 
-export default function VisualStage({ open, onOpenChange, payload }: Props) {
+export default function VisualStage({ open, onOpenChange, payload, onReplace }: Props) {
   console.groupCollapsed("[VisualStage] render");
   console.log("open:", open);
   console.log("payload:", payload);
@@ -95,7 +96,7 @@ export default function VisualStage({ open, onOpenChange, payload }: Props) {
   const Comp = payload.component_name ? getVisualComponent(payload.component_name) : null;
 
   // Mirror top-level → props so legacy callers still work
-  const mergedProps = {
+  const mergedProps: Record<string, any> = {
     ...(payload.props || {}),
     ...(payload.media && !payload.props?.media ? { media: payload.media } : {}),
     ...(payload.title && !payload.props?.title ? { title: payload.title } : {}),
@@ -107,6 +108,33 @@ export default function VisualStage({ open, onOpenChange, payload }: Props) {
   const showHeader = payload.component_name ? !HAS_OWN_CHROME.has(payload.component_name) : true;
   const titleId = "visual-stage-title";
   const descId = "visual-stage-desc";
+
+   // 👇 helper for immediate agent speech
+  const say = (text: string) => {
+    window.dispatchEvent(new CustomEvent("agent-say", { detail: { text } }));
+  };
+
+  // 👇 If this is the payment form, compose a default onPaid
+  if (payload.component_name === "payment_form") {
+    const userOnPaid = mergedProps.onPaid as ((info: { paymentIntentId: string }) => void) | undefined;
+    mergedProps.onPaid = (info: { paymentIntentId: string }) => {
+      // 1) Tenant override runs first
+      userOnPaid?.(info);
+
+      // 2) Swap to a confirmation visual (if host provided onReplace)
+      onReplace?.({
+        component_name: "reservation_confirmation",
+        title: "Payment received",
+        description: `Your payment is confirmed. Reference: ${info.paymentIntentId}`,
+        size: "md",
+        props: { paymentIntentId: info.paymentIntentId },
+      });
+
+      // 3) Let the agent acknowledge immediately
+      say("Thanks! Your payment has been received and your booking is confirmed.");
+    };
+  }
+
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

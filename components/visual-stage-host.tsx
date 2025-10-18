@@ -38,7 +38,17 @@ const VisualStageHostInner = forwardRef<VisualStageHandle, {}>(function VisualSt
   console.count("[VisualStageHost] RENDER");
   console.log(payload); // comment out or move to an effect if needed
 
-  return <VisualStage open={open} onOpenChange={handleOpenChange} payload={payload} />;
+  return (
+    <VisualStage 
+      open={open} 
+      onOpenChange={handleOpenChange} 
+      payload={payload} 
+      onReplace={(next) => {
+        setPayload(next);
+        if (!open) setOpen(true);
+      }}
+      />
+    )
 });
 
 // ✅ Memoize to block parent-driven re-renders (no props = always equal)

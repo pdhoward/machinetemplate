@@ -184,45 +184,45 @@ export const useToolsFunctions = () => {
   }
 
   const scrapeWebsite = async ({ url }: { url: string }) => {
-  const apiKey = process.env.NEXT_PUBLIC_FIRECRAWL_API_KEY;
-  try {
-    // Show fetching toast message
-    toast.loading(t('tools.scrapeWebsite.fetching'), {
-      id: 'scrape-loading', // Unique ID to manage the toast
-    });
+    const apiKey = process.env.NEXT_PUBLIC_FIRECRAWL_API_KEY;
+    try {
+      // Show fetching toast message
+      toast.loading(t('tools.scrapeWebsite.fetching'), {
+        id: 'scrape-loading', // Unique ID to manage the toast
+      });
 
-    const app = new FirecrawlApp({ apiKey: apiKey });
-    const scrapeResult = await app.scrapeUrl(url, { formats: ['markdown', 'html'] }) as ScrapeResponse;
+      const app = new FirecrawlApp({ apiKey: apiKey });
+      const scrapeResult = await app.scrapeUrl(url, { formats: ['markdown', 'html'] }) as ScrapeResponse;
 
-    if (!scrapeResult.success) {
-      // Dismiss the loading toast
+      if (!scrapeResult.success) {
+        // Dismiss the loading toast
+        toast.dismiss('scrape-loading');
+        console.log(scrapeResult.error);
+        return {
+          success: false,
+          message: `Failed to scrape: ${scrapeResult.error}`,
+        };
+      }
+
+      // Dismiss the loading toast and show success toast
       toast.dismiss('scrape-loading');
-      console.log(scrapeResult.error);
+      toast.success(t('tools.scrapeWebsite.toast'), {
+        description: t('tools.scrapeWebsite.success'),
+      });
+
+      return {
+        success: true,
+        message: `Here is the scraped website content: ${JSON.stringify(scrapeResult.markdown)} Summarize and explain it to the user now in a response.`,
+      };
+    } catch (error) {
+      // Dismiss the loading toast on error
+      toast.dismiss('scrape-loading');
       return {
         success: false,
-        message: `Failed to scrape: ${scrapeResult.error}`,
+        message: `Error scraping website: ${error}`,
       };
     }
-
-    // Dismiss the loading toast and show success toast
-    toast.dismiss('scrape-loading');
-    toast.success(t('tools.scrapeWebsite.toast'), {
-      description: t('tools.scrapeWebsite.success'),
-    });
-
-    return {
-      success: true,
-      message: `Here is the scraped website content: ${JSON.stringify(scrapeResult.markdown)} Summarize and explain it to the user now in a response.`,
-    };
-  } catch (error) {
-    // Dismiss the loading toast on error
-    toast.dismiss('scrape-loading');
-    return {
-      success: false,
-      message: `Error scraping website: ${error}`,
-    };
-  }
-};
+ };
 
   return {
     timeFunction,
@@ -230,6 +230,6 @@ export const useToolsFunctions = () => {
     partyFunction,
     launchWebsite,
     copyToClipboard,
-    scrapeWebsite
+    scrapeWebsite,   
   }
 }

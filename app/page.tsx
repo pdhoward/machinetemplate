@@ -149,7 +149,7 @@ const App: React.FC = () => {
         }
       });
 
-      // register visual UI function
+      // register visual UI function = show_component
       Object.entries(visualFunction).forEach(([localName, fn]) => {
         const toolName = nameMap[localName];
         if (toolName && typeof fn === "function") {
@@ -195,7 +195,11 @@ const App: React.FC = () => {
               ...coreTools,            
               ...httpToolDefs,
             ];
-            const SYSTEM_PROMPT = buildInstructions(base, exposedToolDefs);           
+            const todayIso = new Date().toISOString();
+            const SYSTEM_PROMPT = [
+              `TODAY_IS: ${todayIso} (use America/Chicago for local comparisons)`,
+              buildInstructions(base, exposedToolDefs)
+            ].join("\n\n");         
 
             // 4) Single session update
             updateSession({ tools: exposedToolDefs, instructions: SYSTEM_PROMPT });
