@@ -4,7 +4,7 @@
 import { registerVisualComponent } from "@/components/visuals/registry";
 
 // partner-provided mapping → lazy chunk
-registerVisualComponent("map_view", () => import("@partner/widgets/MapView"));
+// registerVisualComponent("map_view", () => import("@partner/widgets/MapView"));
 // register more…
 
 /*

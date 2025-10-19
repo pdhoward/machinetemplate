@@ -142,7 +142,7 @@ function buildHttpExecutorViaProxy(
 
       // Execute UI instructions
       if (ui?.open && showOnStage) {
-        const templated = applyTemplate(ui.open, ctx);
+        const templated = applyTemplate(ui.open, ctx);       
         try {
           showOnStage(templated);
         } catch (e) {
