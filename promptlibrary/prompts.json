@@ -62,8 +62,14 @@
       },
       "booking_collect_payment": {
         "when": [
-          "User completes reservation. A credit card is needed on file to secure the reservation.",
+          "User completes reservation. A credit card is needed on file to secure the reservation. This is a multistep process",
           "Immediately after reservation is made."
+        ],
+        "steps": [
+          "execute the tool using the urlTemplate with required parameters. This creates-intent to pay and is the first step in the process ",
+          "upon onSuccess receipt of the response from the booking-engine, open the payments_form with required props",
+          "user will complete the form with required payment card data and submit form",
+          "upon receipt of the response from form submission, say Your reservation is now confirmed. We look forward to seeing on {{check_in date}} "
         ],
         "args": ["tenant_id","reservation_id","amount_cents","currency"],
         "success_say": "Your reservation is now confirmed. We look forward to seeing on {{check_in date}}"
@@ -77,7 +83,7 @@
       },
       "show_component": {
         "when": [
-          "A user requests media (pictures/videos/site plans/menus) or wishes to provide payment information, use the appropriate tool to retrieve the relevant data or url arrays, and then show_component tool to render it to the web page"
+          "A user requests media (pictures/videos/site plans/menus) or wishes to provide payment card data, use the appropriate tool to retrieve the relevant data or url arrays, and then show_component tool to render it to the web page"
         ],
         "args": ["component_name", "props?"]
       },

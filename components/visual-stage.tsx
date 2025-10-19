@@ -84,6 +84,7 @@ export default function VisualStage({ open, onOpenChange, payload, onReplace }: 
   console.log("open:", open);
   console.log("payload:", payload);
   console.groupEnd();
+  
 
   // Don’t portal anything if closed or no payload
   if (!open || !payload) return null;
@@ -104,6 +105,31 @@ export default function VisualStage({ open, onOpenChange, payload, onReplace }: 
     ...(payload.url && !payload.props?.url ? { url: payload.url } : {}),
     compact: true,
   };
+
+  if (payload.component_name === "payment_form") {
+  console.log("[VisualStage] payment_form props:", mergedProps);
+  // Expect: tenantId, reservationId, amountCents (number), currency, clientSecret
+  console.log(`amounts cents type is ...`, typeof mergedProps.amountCents)
+ }
+
+   // 🔽 INSERT THIS BLOCK: wrap onPaid for payment_form
+  if (payload.component_name === "payment_form") {
+    const userOnPaid = mergedProps.onPaid as (undefined | ((i: { paymentIntentId: string }) => void));
+    mergedProps.onPaid = async (info: { paymentIntentId: string }) => {
+      try { userOnPaid?.(info); } catch {}
+      // swap to a confirmation visual (or any visual you like)
+      onReplace?.({
+        component_name: "reservation_confirmation",
+        title: "Payment received",
+        description: `Payment confirmed (PI ${info.paymentIntentId.slice(0, 10)}…).`,
+        size: "md",
+        props: {
+          paymentIntentId: info.paymentIntentId,
+          // you can pass more props for your confirmation component here
+        }
+      });
+    };
+  }
 
   const showHeader = payload.component_name ? !HAS_OWN_CHROME.has(payload.component_name) : true;
   const titleId = "visual-stage-title";
