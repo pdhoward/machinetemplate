@@ -102,110 +102,22 @@ function getByPath(obj: any, path: string) {
  *   tpl("Bearer {{secrets.apiKey}}", { secrets: { apiKey: "xyz" }}) -> "Bearer xyz"
  *   tpl("https://x/{tenant}/y", { tenant: "cypress" })              -> "https://x/cypress/y"
  */
-/**
- * Filters registry used by `tpl()` pipe syntax.
- * Usage examples in templates:
- *   {{ args.amount_cents | number }}
- *   {{ args.currency | default('USD') | upper }}
- *   {{ args.prefill | json }}
- */
-const FILTERS: Record<string, (val: any, arg?: any) => any> = {
-  number: (v) => {
-    if (typeof v === "number") return v;
-    const n = Number(v);
-    return Number.isFinite(n) ? n : v;
-  },
-  int: (v) => {
-    const n = parseInt(String(v), 10);
-    return Number.isFinite(n) ? n : v;
-  },
-  bool: (v) => {
-    if (typeof v === "boolean") return v;
-    if (typeof v === "string") {
-      const s = v.trim().toLowerCase();
-      if (s === "true") return true;
-      if (s === "false") return false;
-      if (s === "1") return true;
-      if (s === "0") return false;
-    }
-    return !!v;
-  },
-  upper: (v) => (v == null ? v : String(v).toUpperCase()),
-  lower: (v) => (v == null ? v : String(v).toLowerCase()),
-  trim:  (v) => (v == null ? v : String(v).trim()),
-  default: (v, dflt) => (v == null || v === "" ? dflt : v),
-  json: (v) => {
-    // If already an object/array, keep it. If valid JSON string, parse; otherwise leave as-is.
-    if (v && (typeof v === "object" || Array.isArray(v))) return v;
-    if (typeof v === "string") {
-      try { const parsed = JSON.parse(v); return parsed; } catch { /* ignore */ }
-    }
-    return v;
-  },
-};
-
-/** Parse a filter token like "default('USD')" or "default:USD" or "default" → {name, arg} */
-function parseFilterToken(tok: string): { name: string; arg?: any } {
-  const t = tok.trim();
-  // Try paren form: name('arg') / name("arg")
-  const m = /^([a-zA-Z_][\w-]*)\s*\(\s*(['"]?)(.*?)\2\s*\)\s*$/.exec(t);
-  if (m) return { name: m[1], arg: m[3] };
-
-  // Try colon form: name:arg
-  const c = /^([a-zA-Z_][\w-]*)\s*:\s*(.+)$/.exec(t);
-  if (c) return { name: c[1], arg: c[2].trim() };
-
-  return { name: t };
-}
-
-/** Resolve a {{ path | filter1 | filter2('x') }} expression against ctx. */
-function resolveExpr(expr: string, ctx: Record<string, any>): any {
-  const parts = expr.split("|").map(s => s.trim()).filter(Boolean);
-  if (parts.length === 0) return "";
-
-  // First part is a dot-path (e.g., args.tenant_id or response.clientSecret)
-  const basePath = parts[0];
-  let val = getByPath(ctx, basePath);
-
-  // Apply filters in order
-  for (let i = 1; i < parts.length; i++) {
-    const { name, arg } = parseFilterToken(parts[i]);
-    const fn = FILTERS[name];
-    if (typeof fn === "function") {
-      val = fn(val, arg);
-    }
-  }
-  return val;
-}
-
-/**
- * tpl(input, ctx)
- * ---------------
- * Supports pipe filters: {{ path | number }}, {{ path | json }}, {{ path | default('USD') | upper }}
- * Also still supports single-brace {path} form (no filters there by design).
- */
-export function tpl(input: string, ctx: Record<string, any>): string {
+export function tpl(input: string, ctx: Dict): string {
   if (typeof input !== "string") return input as any;
 
-  // Double-brace (with filters)
-  let out = input.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_m, expr) => {
-    const v = resolveExpr(String(expr).trim(), ctx);
+  // Replace {{ path }} first to avoid the single-brace regex capturing them.
+  let out = input.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_m, p1) => {
+    const v = getByPath(ctx, String(p1).trim());
     return v == null ? "" : String(v);
   });
 
-  // Single-brace (no filters; kept for backward compatibility)
+  // Then replace { path } tokens.
   out = out.replace(/\{([^}]+?)\}/g, (_m, p1) => {
     const v = getByPath(ctx, String(p1).trim());
     return v == null ? "" : String(v);
   });
 
   return out;
-}
-
-/** True if any unresolved {{...}} or {...} tokens remain in a JSON-like structure */
-export function hasUnresolvedTokens(value: any): boolean {
-  const s = typeof value === "string" ? value : JSON.stringify(value ?? "");
-  return /\{\{[^}]+\}\}|\{[^}]+\}/.test(s);
 }
 
 /**
@@ -318,63 +230,3 @@ export function pruneEmpty<T = any>(value: T): T {
   }
   return out as any;
 }
-
-// --- helpers (put these near the top of the file or in your utils) ---
-const TOKEN_RE_DBL = /\{\{\s*([^}]+?)\s*\}\}/g;
-const TOKEN_RE_SNG = /\{([^}]+?)\}/g;
-
-
-export function extractTokensFromString(s: string): string[] {
-  if (typeof s !== "string") return [];
-  const tokens: string[] = [];
-  let m: RegExpExecArray | null;
-  while ((m = TOKEN_RE_DBL.exec(s))) tokens.push(m[1].trim());
-  while ((m = TOKEN_RE_SNG.exec(s))) tokens.push(m[1].trim());
-  return tokens;
-}
-
-// First segment before any " | filter" / pipeline
-export function stripFilters(token: string): string {
-  const first = token.split("|")[0]!.trim();
-  // also strip function-ish defaults like default('USD')
-  return first.replace(/\s+/g, " ");
-}
-
-// Recursively collect tokens
-export function collectTokens(value: any, out: string[] = []) {
-  if (value == null) return out;
-  if (typeof value === "string") {
-    const tks = extractTokensFromString(value);
-    for (const t of tks) out.push(stripFilters(t));
-    return out;
-  }
-  if (Array.isArray(value)) {
-    for (const v of value) collectTokens(v, out);
-    return out;
-  }
-  if (typeof value === "object") {
-    for (const v of Object.values(value)) collectTokens(v, out);
-  }
-  return out;
-}
-
-// Validate that all tokens resolve in ctx (for request-time objects: URL, headers, body)
-// We only allow these roots at request time:
-const ALLOWED_ROOTS = new Set(["args", "secrets"]);
-export function findMissingTokens(value: any, ctx: Record<string, any>): string[] {
-  const missing: string[] = [];
-  const tokens = collectTokens(value);
-  for (const raw of tokens) {
-    const root = raw.split(".")[0];
-    if (!ALLOWED_ROOTS.has(root)) {
-      // e.g. someone used {{response.*}} in a request (not valid yet)
-      missing.push(raw + " (invalid root)");
-      continue;
-    }
-    const v = getByPath(ctx, raw);
-    if (v === undefined) missing.push(raw);
-  }
-  return [...new Set(missing)];
-}
-// --- end helpers ---
-

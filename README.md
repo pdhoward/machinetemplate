@@ -12,6 +12,32 @@ See the components/visuals/registry.tsx for the setup of a new component that ca
 
 * Tenant Custom tools providing the use case specific tools and functions required by the tenant for activating and enabling their Voice Agent. The Actions collection on Mongo (http descriptors) holds the http tool descriptors, which defines the api calls to the tenant's applications, such as a Booking Engine application (in the case of a tenant Hotel property), buying product (in case of a products company), scheduling appointments (in case of a professional services firm) or providing infomration about events. 
 
+HTTP tool descriptors have declarative UI instructions.
+Runtime behavior (from /api/tools/execute):
+- Templating context is { args, response, status, secrets }.
+- Strings in url/headers/body/ui are templated via `tpl()` (supports filters).
+- Success = http.okField exists (truthy) in response OR HTTP 2xx when okField omitted.
+- Then apply ui.onSuccess or ui.onError; payload is templated again with the same ctx.
+- `pruneEmpty: true` strips "", null, {}, [] before sending.
+
+✅ Authoring rules (critical):
+1) Always reference caller params as {{args.your_field}} (not just {{your_field}}).
+2) Coerce numbers/booleans in templates using filters, e.g. {{args.limit | number}}, {{args.include_rates | bool}}.
+3) For currency, prefer {{args.currency | default('USD') | upper}}.
+4) For nested JSON props, pass structured objects (not stringified), e.g. customer: "{{args.prefill | json}}".
+5) Keep okField aligned with the API’s success shape (e.g., "ok" or "clientSecret").
+6) If your API needs auth, use {{secrets.*}} in headers; the server will inject the secret.
+
+Why this will “just work”
+
+Numbers are numbers (| number) when they hit your APIs or UI props—no more "79000" surprises.
+
+Objects are objects (| json)—no more "[object Object]".
+
+Currency is normalized (| default('USD') | upper) everywhere.
+
+Consistent {{args.*}} makes it obvious what’s coming from the model/tool call versus the API {{response.*}}.
+
 The platform also can handle remote api calls to mongodb (retrieve Things collections via mongo gateway), and local nextjs api calls using the hooks/useTools set of tools - but this will be depracated in favor of api applications.
 
 ### Seeding Test Data

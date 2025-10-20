@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { HttpToolDescriptorSchema } from "./httpTool.schema";
 
-// Extendable discriminated union (start with http_tool)
+// Extendable discriminated union 
 export const ToolRegistryItemSchema = z.discriminatedUnion("kind", [
-  HttpToolDescriptorSchema, // future: add action_tool, browser_tool, etc.
+  HttpToolDescriptorSchema, 
 ]);
 
 export const ToolRegistryArraySchema = z.array(ToolRegistryItemSchema);

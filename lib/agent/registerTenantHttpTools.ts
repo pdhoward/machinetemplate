@@ -1,6 +1,6 @@
 
 import type { ToolDef } from "@/types/tools";
-import { applyTemplate } from "@/lib/utils";
+import { applyTemplate, hasUnresolvedTokens } from "@/lib/utils";
 import { toast } from "sonner";
 
 
@@ -147,6 +147,20 @@ function buildHttpExecutorViaProxy(
           showOnStage(templated);
         } catch (e) {
           console.warn(`[http tool:${descr.name}] showOnStage failed:`, (e as any)?.message || e);
+        }
+      }
+
+      // When preparing UI open:
+      if (ui?.open && showOnStage) {
+        const openPayload = applyTemplate(ui.open, ctx);
+        if (hasUnresolvedTokens(openPayload)) {
+          console.warn(`[http tool UI:${descr.name}] unresolved tokens in UI payload`, openPayload);
+          // You can toast here and skip opening a broken visual
+        }
+       try {
+          showOnStage(openPayload);
+        } catch (e) {
+          throw new Error(`[http tool:${descr.name}] showOnStage failed:`, (e as any)?.message || e);
         }
       }
 

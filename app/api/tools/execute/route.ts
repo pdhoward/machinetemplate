@@ -1,6 +1,12 @@
 // src/app/api/tools/execute/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { tpl, applyTemplate, pruneEmpty } from "@/lib/utils";
+import { 
+  tpl, 
+  applyTemplate, 
+  pruneEmpty, 
+  hasUnresolvedTokens,
+  findMissingTokens
+} from "@/lib/utils";
 
 /** Simple trace id for correlating logs across hops */
 const mkTraceId = (prefix = "exec") =>
@@ -58,8 +64,16 @@ export async function POST(req: NextRequest) {
     const ctx = { ...args, args, secrets: secretsProxy };
 
     const method = descriptor?.http?.method ?? "POST";
-    const rawUrl = String(descriptor.http.urlTemplate || "");
-    const templatedUrl = tpl(rawUrl, ctx);
+    const urlTmpl = String(descriptor.http?.urlTemplate || "");
+    const urlMissing = findMissingTokens(urlTmpl, ctx);
+    if (urlMissing.length) {
+      throw new Error(`Unresolved tokens in urlTemplate: ${urlMissing.join(", ")}`);
+    }
+    const templatedUrl = tpl(urlTmpl, ctx);
+
+    if (hasUnresolvedTokens(templatedUrl)) {
+        throw new Error(`Unresolved tokens in URL: ${templatedUrl}`);
+    }
 
     // Build absolute URL for server-side fetch
     const proto = req.headers.get("x-forwarded-proto") ?? "http";
@@ -68,22 +82,41 @@ export async function POST(req: NextRequest) {
       ? templatedUrl
       : new URL(templatedUrl, `${proto}://${host}`).toString();
 
-    // Template headers (redacted for logs)
+    // Headers validation
+    const headerTemplate = descriptor.http?.headers ?? {};
+    const hdrMissing = findMissingTokens(headerTemplate, ctx);
+    if (hdrMissing.length) {
+      throw new Error(`Unresolved tokens in headers: ${hdrMissing.join(", ")}`);
+    }
     const headers: Record<string, string> = Object.fromEntries(
-      Object.entries(descriptor.http.headers ?? {}).map(([k, v]) => [k, tpl(String(v), ctx)])
+      Object.entries(headerTemplate).map(([k, v]) => [k, tpl(String(v), ctx)])
     );
     headers["x-trace-id"] = traceId; // pass through for downstream services
 
     // Template/prepare body
     let body: string | undefined;
     let bodyObj: any = undefined;
-    if (descriptor.http.jsonBodyTemplate != null) {
+
+    if (descriptor.http?.jsonBodyTemplate != null) {
+      // 1) Validate tokens exist in ctx (args / secrets only at request-time)
+      const missing = findMissingTokens(descriptor.http.jsonBodyTemplate, ctx);
+      if (missing.length) {
+        throw new Error(
+          `Unresolved tokens in request body: ${missing.join(", ")}`
+        );
+      }
+      // 2) Apply template
       bodyObj = applyTemplate(descriptor.http.jsonBodyTemplate, ctx);
+      // 3) Optionally prune empties (keeps your wire payload compact/valid)
       if (descriptor.http.pruneEmpty) {
         bodyObj = pruneEmpty(bodyObj);
       }
+      // 4) Stringify for fetch
       body = JSON.stringify(bodyObj);
     }
+
+
+    
 
     // ---- OUTBOUND LOG -----------------------------------------------------
     console.log(`[EXEC] ${traceId} → ${method} ${url}`, {
