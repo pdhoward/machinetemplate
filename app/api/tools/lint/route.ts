@@ -6,7 +6,7 @@ import {
   HttpToolDescriptorSchema,
   type HttpToolDescriptor,
 } from "@/types/httpTool.schema";
-import { lintHttpToolDescriptors } from "@/lib/validator/lint-tools";
+import { lintHttpToolDescriptors, LINTER_VERSION } from "@/lib/validator/lint-tools";
 
 export const runtime = "nodejs";
 
@@ -34,6 +34,9 @@ function unwrapMongoExtendedJSON(v: any): any {
 }
 
 export async function POST(req: NextRequest) {
+  
+  console.log("[admin-lint] using", LINTER_VERSION);
+
   try {
     const json = await req.json().catch(() => ({}));
     const { tenantId, onlyEnabled } = BodySchema.parse(json);
@@ -94,6 +97,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       ok: true,
+      linterVersion: LINTER_VERSION,
       meta: { tenantId, total, totalErrors, totalWarnings, invalid: invalid.length },
       invalid,   // zod-rejected docs with reasons (useful to fix schema drift)
       report,    // structured lint results (per descriptor)

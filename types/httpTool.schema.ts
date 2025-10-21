@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+export const LINTER_VERSION = "http-linter@1.0.3";
+
 /** JSON-like value used throughout templating */
 export const JsonValue: z.ZodType<
   string | number | boolean | null | { [k: string]: any } | any[]

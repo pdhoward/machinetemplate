@@ -32,8 +32,9 @@ export async function GET() {
     // lightweight health check
     try {
       await c.db(maindbname).command({ ping: 1 });
-    } catch {
+    } catch(e) {
       // Stale/broken connection? Recreate once and try again.
+      console.log(`DATABASE TEST FAILED WITH ${e}`)
       client = null;
       c = await getClient();
       await c.db("admin").command({ ping: 1 });

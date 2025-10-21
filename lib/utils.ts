@@ -21,6 +21,68 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
+
+// --- token regex ---
+const TOKEN_RE_DBL = /\{\{\s*([^}]+?)\s*\}\}/g;
+const TOKEN_RE_SNG = /\{([^}]+?)\}/g;
+
+// Infer required args from JSON-Schema-ish descriptor.parameters
+export function inferRequiredArgs(descriptor: any): Set<string> {
+  const req = new Set<string>();
+  const params: any = descriptor?.parameters || {};
+  if (params && typeof params === "object" && Array.isArray(params.required)) {
+    for (const k of params.required) if (typeof k === "string") req.add(k);
+  }
+  return req;
+}
+
+// Request-time validation: only allow args.* and secrets.*
+// - args.* are required only if listed in parameters.required
+// - secrets.* are required if referenced
+const ALLOWED_REQUEST_ROOTS = new Set(["args", "secrets"]);
+export function findMissingRequestTokens(
+  value: any,
+  ctx: Record<string, any>,
+  requiredArgs: Set<string>
+): string[] {
+  const missing: string[] = [];
+  const tokens = collectTokens(value);
+  for (const raw of tokens) {
+    const tok = stripFilters(raw);          // e.g. "args.limit"
+    const root = tok.split(".")[0]!;        // "args"
+    if (!ALLOWED_REQUEST_ROOTS.has(root)) {
+      missing.push(`${tok} (invalid root)`);      // e.g. "response.*" in request-time
+      continue;
+    }
+
+    if (root === "args") {
+      const head = tok.split(".")[1];             // "limit"
+      const isRequired = head ? requiredArgs.has(head) : false;
+      const v = getByPath(ctx, tok);
+      if (isRequired && v === undefined) missing.push(tok);
+      continue; // optional args may resolve to undefined → OK
+    }
+
+    if (root === "secrets") {
+      const v = getByPath(ctx, tok);
+      if (v === undefined || v === "") missing.push(tok);
+    }
+  }
+  return [...new Set(missing)];
+}
+
+// Optional: remove ?k= from URLs where value === ""
+export function stripEmptyQueryParams(u: string): string {
+  try {
+    const url = new URL(u);
+    [...url.searchParams.keys()].forEach((k) => {
+      if (url.searchParams.get(k) === "") url.searchParams.delete(k);
+    });
+    return url.toString();
+  } catch { return u; }
+}
+
+
 /**
  * cn(...classes)
  * --------------
@@ -319,11 +381,6 @@ export function pruneEmpty<T = any>(value: T): T {
   return out as any;
 }
 
-// --- helpers (put these near the top of the file or in your utils) ---
-const TOKEN_RE_DBL = /\{\{\s*([^}]+?)\s*\}\}/g;
-const TOKEN_RE_SNG = /\{([^}]+?)\}/g;
-
-
 export function extractTokensFromString(s: string): string[] {
   if (typeof s !== "string") return [];
   const tokens: string[] = [];
@@ -335,9 +392,7 @@ export function extractTokensFromString(s: string): string[] {
 
 // First segment before any " | filter" / pipeline
 export function stripFilters(token: string): string {
-  const first = token.split("|")[0]!.trim();
-  // also strip function-ish defaults like default('USD')
-  return first.replace(/\s+/g, " ");
+  return token.split("|")[0]!.trim();
 }
 
 // Recursively collect tokens

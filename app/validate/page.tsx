@@ -17,10 +17,12 @@ type ReportItem = {
   tenantId?: string;
   enabled?: boolean;
   issues: Issue[];
+  linterVersion?: string; 
 };
 
 type LintResponse = {
   ok: boolean;
+  linterVersion?: string; 
   meta?: {
     tenantId: string;
     total: number;
@@ -32,6 +34,52 @@ type LintResponse = {
   report?: ReportItem[];
   error?: string;
 };
+
+
+function SummaryCard({
+  label,
+  value,
+  tone = "default",
+}: {
+  label: string;
+  value: number | string;
+  tone?: "default" | "error" | "warn" | "muted";
+}) {
+  const cn =
+    tone === "error"
+      ? "border-red-600 "
+      : tone === "warn"
+      ? "border-amber-600 bg-amber-50"
+      : tone === "muted"
+      ? "border-neutral-200"
+      : "border-neutral-200";
+  return (
+    <div className={`rounded-lg border p-3 bg-neutral-900 ${cn}`}>
+      <div className="text-xs text-neutral-500">{label}</div>
+      <div className="text-lg font-semibold">{value}</div>
+    </div>
+  );
+}
+
+function Badge({
+  children,
+  tone = "ok",
+}: {
+  children: React.ReactNode;
+  tone?: "ok" | "error" | "warn" | "muted";
+}) {
+  const base = "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium";
+  const cls =
+    tone === "ok"
+      ? "bg-green-100 text-green-800"
+      : tone === "error"
+      ? "bg-red-100 text-red-800"
+      : tone === "warn"
+      ? "bg-amber-100 text-amber-800"
+      : "bg-neutral-100 text-neutral-700";
+  return <span className={`${base} ${cls}`}>{children}</span>;
+}
+
 
 export default function LintAdminPage() {
   const { tenantId } = useTenant();
@@ -64,11 +112,21 @@ export default function LintAdminPage() {
     runLint();
   }, [runLint]);
 
+   const linterVersion =
+    data?.linterVersion ??
+    data?.report?.[0]?.linterVersion ??
+    "unknown";
+
   return (
     <div className="mx-auto max-w-6xl p-4 sm:p-6">
       <header className="mb-4 sm:mb-6 flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold">Tool Lint Report</h1>
+          <h1 className="text-xl font-semibold">
+            Tool Lint Report
+            <span className="rounded-md border border-neutral-300 px-2 py-0.5 text-xs text-neutral-600">
+              {linterVersion}
+            </span>
+          </h1>
           <p className="text-sm text-neutral-500">Tenant: <span className="font-medium">{tenantId}</span></p>
         </div>
         <button
@@ -94,7 +152,7 @@ export default function LintAdminPage() {
       ) : (
         <>
           {/* Summary cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4 ">
             <SummaryCard label="Total tools" value={data.meta?.total ?? 0} />
             <SummaryCard label="Errors" value={data.meta?.totalErrors ?? 0} tone="error" />
             <SummaryCard label="Warnings" value={data.meta?.totalWarnings ?? 0} tone="warn" />
@@ -120,7 +178,7 @@ export default function LintAdminPage() {
           {/* Results table */}
           <div className="overflow-x-auto rounded-lg border border-neutral-200">
             <table className="min-w-full text-sm">
-              <thead className="bg-neutral-50 text-neutral-600">
+              <thead className="bg-neutral-900 text-neutral-600">
                 <tr>
                   <th className="px-3 py-2 text-left font-medium">Tool</th>
                   <th className="px-3 py-2 text-left font-medium">Enabled</th>
@@ -135,7 +193,7 @@ export default function LintAdminPage() {
                   const ok = r.issues.length === 0;
 
                   return (
-                    <tr key={idx} className="hover:bg-neutral-50">
+                    <tr key={idx} className="hover:bg-neutral-900">
                       <td className="px-3 py-2">
                         <div className="font-medium">{r.name}</div>
                         <div className="text-xs text-neutral-500">{r.tenantId || ""}</div>
@@ -170,12 +228,12 @@ export default function LintAdminPage() {
                                     </Badge>
                                     <code className="text-[11px] text-neutral-500">{i.code}</code>
                                   </div>
-                                  <div className="text-neutral-800">{i.message}</div>
+                                  <div className="text-white">{i.message}</div>
                                   <div className="text-neutral-500 mt-1">
                                     <span className="font-mono">{i.path}</span>
                                   </div>
                                   {i.suggestion && (
-                                    <div className="text-neutral-700 mt-1">
+                                    <div className="text-white mt-1">
                                       <span className="font-medium">Suggestion:</span> {i.suggestion}
                                     </div>
                                   )}
@@ -195,48 +253,4 @@ export default function LintAdminPage() {
       )}
     </div>
   );
-}
-
-function SummaryCard({
-  label,
-  value,
-  tone = "default",
-}: {
-  label: string;
-  value: number | string;
-  tone?: "default" | "error" | "warn" | "muted";
-}) {
-  const cn =
-    tone === "error"
-      ? "border-red-200 bg-red-50"
-      : tone === "warn"
-      ? "border-amber-200 bg-amber-50"
-      : tone === "muted"
-      ? "border-neutral-200 bg-neutral-50"
-      : "border-neutral-200 bg-white";
-  return (
-    <div className={`rounded-lg border p-3 ${cn}`}>
-      <div className="text-xs text-neutral-500">{label}</div>
-      <div className="text-lg font-semibold">{value}</div>
-    </div>
-  );
-}
-
-function Badge({
-  children,
-  tone = "ok",
-}: {
-  children: React.ReactNode;
-  tone?: "ok" | "error" | "warn" | "muted";
-}) {
-  const base = "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium";
-  const cls =
-    tone === "ok"
-      ? "bg-green-100 text-green-800"
-      : tone === "error"
-      ? "bg-red-100 text-red-800"
-      : tone === "warn"
-      ? "bg-amber-100 text-amber-800"
-      : "bg-neutral-100 text-neutral-700";
-  return <span className={`${base} ${cls}`}>{children}</span>;
 }

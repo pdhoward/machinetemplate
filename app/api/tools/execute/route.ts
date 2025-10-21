@@ -1,11 +1,13 @@
 // src/app/api/tools/execute/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { 
-  tpl, 
-  applyTemplate, 
-  pruneEmpty, 
+import {
+  tpl,
+  applyTemplate,
+  pruneEmpty,
   hasUnresolvedTokens,
-  findMissingTokens
+  inferRequiredArgs,
+  findMissingRequestTokens,
+  stripEmptyQueryParams,
 } from "@/lib/utils";
 
 /** Simple trace id for correlating logs across hops */
@@ -24,6 +26,16 @@ function redactHeaders(h: Record<string, string>) {
   }
   return out;
 }
+
+function inferRequiredArgs(descriptor: any): Set<string> {
+  const req = new Set<string>();
+  const params: any = descriptor?.parameters || {};
+  if (params && typeof params === "object" && Array.isArray(params.required)) {
+    for (const k of params.required) if (typeof k === "string") req.add(k);
+  }
+  return req;
+}
+
 
 /** Truncate large payloads to keep logs readable */
 function snap(v: unknown, n = 1500) {
