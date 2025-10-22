@@ -381,22 +381,40 @@ export function pruneEmpty<T = any>(value: T): T {
   return out as any;
 }
 
+/**
+ * Extract tokens from a string with NO duplicates and NO brace leakage.
+ * - First collect all {{ ... }}.
+ * - Then remove them from the string.
+ * - Then collect single-brace { ... } from the remainder.
+ */
 export function extractTokensFromString(s: string): string[] {
   if (typeof s !== "string") return [];
   const tokens: string[] = [];
+
+  // 1) collect double-brace
   let m: RegExpExecArray | null;
   while ((m = TOKEN_RE_DBL.exec(s))) tokens.push(m[1].trim());
-  while ((m = TOKEN_RE_SNG.exec(s))) tokens.push(m[1].trim());
+
+  // 2) strip ALL double-brace spans so singles won't “see” the first '{' of a double
+  const withoutDbl = s.replace(/\{\{\s*[^{}]+?\s*\}\}/g, "");
+
+  // 3) collect single-brace from the stripped string
+  while ((m = TOKEN_RE_SNG.exec(withoutDbl))) tokens.push(m[1].trim());
+
   return tokens;
 }
 
-// First segment before any " | filter" / pipeline
+
+// Normalize "args.limit | number" -> "args.limit"
 export function stripFilters(token: string): string {
   return token.split("|")[0]!.trim();
 }
 
-// Recursively collect tokens
-export function collectTokens(value: any, out: string[] = []) {
+/**
+ * Recursively collect tokens from objects/arrays/strings.
+ * ALWAYS returns *bare* paths (e.g. "args.tenant_id"), filters removed.
+ */
+export function collectTokens(value: any, out: string[] = []): string[] {
   if (value == null) return out;
   if (typeof value === "string") {
     const tks = extractTokensFromString(value);
@@ -416,18 +434,22 @@ export function collectTokens(value: any, out: string[] = []) {
 // Validate that all tokens resolve in ctx (for request-time objects: URL, headers, body)
 // We only allow these roots at request time:
 const ALLOWED_ROOTS = new Set(["args", "secrets"]);
-export function findMissingTokens(value: any, ctx: Record<string, any>): string[] {
+
+export function findMissingTokens(
+  value: any,
+  ctx: Record<string, any>
+): string[] {
   const missing: string[] = [];
-  const tokens = collectTokens(value);
-  for (const raw of tokens) {
-    const root = raw.split(".")[0];
+  const tokens = collectTokens(value); // ← already filter-stripped, brace-free
+
+  for (const tok of tokens) {
+    const root = tok.split(".")[0]!;
     if (!ALLOWED_ROOTS.has(root)) {
-      // e.g. someone used {{response.*}} in a request (not valid yet)
-      missing.push(raw + " (invalid root)");
+      missing.push(`${tok} (invalid root)`); // e.g. response.* inside request
       continue;
     }
-    const v = getByPath(ctx, raw);
-    if (v === undefined) missing.push(raw);
+    const v = getByPath(ctx, tok);
+    if (v === undefined) missing.push(tok);
   }
   return [...new Set(missing)];
 }

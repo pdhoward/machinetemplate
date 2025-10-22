@@ -121,7 +121,7 @@ export default function LintAdminPage() {
     <div className="mx-auto max-w-6xl p-4 sm:p-6">
       <header className="mb-4 sm:mb-6 flex items-center justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold">
+          <h1 className="text-xl font-semibold flex items-center gap-3">
             Tool Lint Report
             <span className="rounded-md border border-neutral-300 px-2 py-0.5 text-xs text-neutral-600">
               {linterVersion}

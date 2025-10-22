@@ -2,7 +2,12 @@
 // Lints HttpToolDescriptor[] for common templating & UI mistakes.
 
 import { HttpToolDescriptor } from "@/types/httpTool.schema";
-import { collectTokens, stripFilters, applyTemplate, hasUnresolvedTokens } from "@/lib/utils";
+import { 
+  collectTokens, 
+  stripFilters, 
+  applyTemplate, 
+  hasUnresolvedTokens 
+} from "@/lib/utils";
 
 export const LINTER_VERSION = "http-linter@1.0.3";
 
@@ -31,6 +36,8 @@ export type LintResult = {
 
 const REQUEST_ALLOWED_ROOTS = new Set(["args", "secrets"]);
 const UI_ALLOWED_ROOTS      = new Set(["args", "response", "status"]);
+
+let x = 0
 
 /* ----------------------------- Helpers --------------------------- */
 
@@ -105,6 +112,10 @@ export function lintHttpToolDescriptors(
           const tok  = normalizeTokenPath(raw);
           const root = tok.split(".")[0]!;
           if (!REQUEST_ALLOWED_ROOTS.has(root)) {
+            if (x<5) {
+              console.debug("[lint:request-token]", { tool: d.name, where, token: raw, normalized: normalizeTokenPath(raw) });
+              x++
+            }
             issues.push({
               severity: "error",
               code: "request.invalid_token_root",
