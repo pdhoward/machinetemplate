@@ -1,27 +1,27 @@
 // lint-tools.ts
 // Lints HttpToolDescriptor[] for common templating & UI mistakes.
 
-import { HttpToolDescriptor } from "@/types/httpTool.schema";
 import { 
   collectTokens, 
   stripFilters, 
+  inferRequiredArgs, 
   applyTemplate, 
-  hasUnresolvedTokens 
-} from "@/lib/utils";
+  hasUnresolvedTokens, 
+  getByPath 
+} from "@/lib/utils"; // Assume utilities path
+
+import { HttpToolDescriptorSchema } from "@/types/httpTool.schema"; 
 
 export const LINTER_VERSION = "http-linter@1.0.3";
-
-/* ----------------------------- Types ----------------------------- */
 
 type Severity = "error" | "warning";
 
 export type LintIssue = {
   severity: Severity;
   code: string;
-  path: string;         // dotted path where the issue occurred
+  path: string;
   message: string;
   suggestion?: string;
-  exampleFix?: any;
 };
 
 export type LintResult = {
@@ -32,214 +32,161 @@ export type LintResult = {
   linterVersion?: string;
 };
 
-/* --------------------------- Constants --------------------------- */
+type ComponentReqs = Record<string, { requiredProps?: string[] }>; // Simplified; removed validate fn for now
+
+const defaultComponentReqs: ComponentReqs = {
+  payment_form: { requiredProps: ["tenantId", "amountCents", "clientSecret", "reservationId"] }, // Added reservationId based on data
+};
 
 const REQUEST_ALLOWED_ROOTS = new Set(["args", "secrets"]);
-const UI_ALLOWED_ROOTS      = new Set(["args", "response", "status"]);
+const UI_ALLOWED_ROOTS = new Set(["args", "response", "status"]);
 
-let x = 0
+// Recursive proxy for dummy values (handles nested paths)
+function createRecursiveProxy(prefix: string): any {
+  return new Proxy({}, {
+    get: (_target, prop: string | symbol) => {
+      if (typeof prop === "symbol") {
+        return undefined;
+      }
+      if (prop === "toString" || prop === "valueOf") {
+        return () => prefix;
+      }
+      return createRecursiveProxy(`${prefix}_${prop}`);
+    },
+  });
+}
 
-/* ----------------------------- Helpers --------------------------- */
-
-const normalizeTokenPath = (raw: string) => stripFilters(raw); // "args.limit | number" → "args.limit"
-const prettyTok          = (raw: string) => normalizeTokenPath(raw);
-const p = (...segs: (string | number)[]) => segs.map(String).join(".");
-
-function walkJson(
-  value: unknown,
-  cb: (path: string, str: string) => void,
-  path: string[] = []
-) {
-  if (typeof value === "string") {
-    cb(path.join("."), value);
-    return;
-  }
-  if (Array.isArray(value)) {
-    value.forEach((v, i) => walkJson(v, cb, path.concat(String(i))));
-    return;
-  }
+function walkJson(value: unknown, cb: (path: string, str: string) => void, path: string[] = []) {
+  if (typeof value === "string") return cb(path.join("."), value);
+  if (Array.isArray(value)) return value.forEach((v, i) => walkJson(v, cb, [...path, String(i)]));
   if (value && typeof value === "object") {
-    Object.entries(value as Record<string, unknown>).forEach(([k, v]) =>
-      walkJson(v, cb, path.concat(k))
-    );
+    for (const [k, v] of Object.entries(value)) walkJson(v, cb, [...path, k]);
   }
 }
 
-/* --------------------- Optional component validator --------------------- */
-
-export type ComponentReqs = Record<
-  string,
-  {
-    requiredProps?: string[];
-    validate?: (props: any, push: (issue: LintIssue) => void) => void;
-  }
->;
-
-const defaultComponentReqs: ComponentReqs = {
-  payment_form: { requiredProps: ["tenantId", "amountCents", "clientSecret"] },
-};
-
-/* ------------------------------ Linter ------------------------------ */
-
 export function lintHttpToolDescriptors(
-  descriptors: HttpToolDescriptor[],
-  options?: {
-    componentReqs?: ComponentReqs;
-    dummyCtx?: {
-      args?: Record<string, any>;
-      response?: Record<string, any>;
-      secrets?: Record<string, string>;
-      status?: number;
-    };
-  }
+  descriptors: any[], // Loose type for flexibility
+  options?: { componentReqs?: ComponentReqs; dummyCtx?: Record<string, any> }
 ): LintResult[] {
   const results: LintResult[] = [];
   const compReqs = options?.componentReqs ?? defaultComponentReqs;
 
   for (const d of descriptors) {
     const issues: LintIssue[] = [];
+    
+    const parsed = HttpToolDescriptorSchema.safeParse(d);
 
-    /* ---------- 1) Request token roots ---------- */
-    const requestParts: Array<{ value: any; where: string }> = [
-      { value: d.http?.urlTemplate,      where: "http.urlTemplate" },
-      { value: d.http?.headers,          where: "http.headers" },
-      { value: d.http?.jsonBodyTemplate, where: "http.jsonBodyTemplate" },
-    ];
-
-    requestParts.forEach(({ value, where }) => {
-      walkJson(value, (at, str) => {
-        for (const raw of collectTokens(str)) {
-          const tok  = normalizeTokenPath(raw);
-          const root = tok.split(".")[0]!;
-          if (!REQUEST_ALLOWED_ROOTS.has(root)) {
-            if (x<5) {
-              console.debug("[lint:request-token]", { tool: d.name, where, token: raw, normalized: normalizeTokenPath(raw) });
-              x++
-            }
-            issues.push({
-              severity: "error",
-              code: "request.invalid_token_root",
-              path: p(where, at),
-              message: `Only args.* or secrets.* may be used in the request. Found ${prettyTok(raw)}.`,
-              suggestion:
-                root === "response"
-                  ? "Move this reference to the UI section (onSuccess/onError)."
-                  : `Replace with an args.* placeholder (e.g., {{${tok.replace(/^.*?\./, "args.")}}}).`,
-            });
-          }
-        }
-      });
-    });
-
-    /* ---------- 2) okField sanity ---------- */
-    if (d.http?.okField) {
-      const ok = d.http.okField;
-      if (!/^[A-Za-z0-9_.[\]]+$/.test(ok)) {
+    // first pass test of the objects based on schema
+    if (!parsed.success) {
+    // Add one issue per Zod error for clarity
+      parsed.error.issues.forEach((zIssue) => {
         issues.push({
-          severity: "warning",
-          code: "http.ok_field_suspicious",
-          path: "http.okField",
-          message: `okField "${ok}" contains unusual characters. Use "ok" or "clientSecret".`,
+          severity: "error",
+          code: "schema_invalid",
+          path: zIssue.path.join("."),
+          message: zIssue.message,
+          suggestion: "Fix the schema violation in the tool descriptor.",
         });
-      }
+      });
     }
 
-    /* ---------- 3) UI token roots (no secrets) ---------- */
-    const uiParts: Array<{ value: any; where: string }> = [
-      { value: (d as any).ui?.loadingMessage, where: "ui.loadingMessage" },
-      { value: (d as any).ui?.onSuccess?.open, where: "ui.onSuccess.open" },
-      { value: (d as any).ui?.onError?.open,   where: "ui.onError.open" },
-    ];
-    uiParts.forEach(({ value, where }) => {
+
+
+    // Unified token root check (for requests and UI)
+    const checkTokenRoots = (value: any, where: string, allowedRoots: Set<string>) => {
       walkJson(value, (at, str) => {
         for (const raw of collectTokens(str)) {
-          const tok  = normalizeTokenPath(raw);
-          const root = tok.split(".")[0]!;
-          if (!UI_ALLOWED_ROOTS.has(root)) {
+          const tok = stripFilters(raw);
+          const root = tok.split(".")[0] || "";
+          if (!allowedRoots.has(root)) {
             issues.push({
               severity: "error",
-              code: "ui.invalid_token_root",
-              path: p(where, at),
-              message: `UI may use args.*, response.*, or status. Found ${prettyTok(raw)}.`,
-              suggestion:
-                root === "secrets"
-                  ? "Never reference secrets in UI/templates that reach the client."
-                  : "Move this reference to the request or remove it.",
+              code: `${where.split(".")[0]}.invalid_token_root`,
+              path: `${where}.${at}`,
+              message: `Invalid token root in ${where}: ${tok}. Allowed: ${[...allowedRoots].join(", ")}.`,
+              suggestion: `Use a valid root or move to appropriate section.`,
             });
           }
         }
       });
+    };
+
+    // Request parts
+    checkTokenRoots(
+      { urlTemplate: d.http?.urlTemplate, headers: d.http?.headers, jsonBodyTemplate: d.http?.jsonBodyTemplate },
+      "http",
+      REQUEST_ALLOWED_ROOTS
+    );
+
+    // UI parts
+    checkTokenRoots(
+      { loadingMessage: d.ui?.loadingMessage, onSuccess: d.ui?.onSuccess?.open, onError: d.ui?.onError?.open },
+      "ui",
+      UI_ALLOWED_ROOTS
+    );
+
+    // okField sanity
+    const ok = d.http?.okField;
+    if (ok && !/^[A-Za-z0-9_.[\]]+$/.test(ok)) {
+      issues.push({
+        severity: "warning",
+        code: "http.ok_field_suspicious",
+        path: "http.okField",
+        message: `okField "${ok}" has unusual characters. Prefer simple keys like "ok".`,
+      });
+    }
+
+    // Component prop checks
+    ["onSuccess", "onError"].forEach((branch) => {
+      const open = d.ui?.[branch]?.open;
+      if (!open) return;
+      const comp = open.component_name || "";
+      const req = compReqs[comp];
+      if (!req?.requiredProps) return;
+      const props = open.props || {};
+      req.requiredProps.forEach((key) => {
+        if (!(key in props)) {
+          issues.push({
+            severity: "error",
+            code: "ui.required_prop_missing",
+            path: `ui.${branch}.open.props.${key}`,
+            message: `"${comp}" requires props.${key}.`,
+            suggestion: `Add: "${key}": "{{response.${key}}}" or a literal.`,
+          });
+        }
+      });
     });
 
-    /* ---------- 4) Known component prop checks ---------- */
-    (["onSuccess", "onError"] as const).forEach((branch) => {
-      const open = (d as any)?.ui?.[branch]?.open;
-      if (!open || typeof open !== "object") return;
-      const comp = String(open.component_name || "");
-      const req  = compReqs[comp];
-      if (!req) return;
-
-      const props = open.props;
-      const push  = (issue: LintIssue) => issues.push(issue);
-
-      if (req.requiredProps && props && typeof props === "object") {
-        req.requiredProps.forEach((key) => {
-          const has = Object.prototype.hasOwnProperty.call(props, key);
-          if (!has) {
-            push({
-              severity: "error",
-              code: "ui.required_prop_missing",
-              path: p("ui", branch, "open.props", key),
-              message: `"${comp}" requires props.${key} (templated or literal).`,
-              suggestion: `Add props.${key}: "{{response.${key}}}" or "{{args.${key}}}".`,
-            });
-          }
-        });
-      }
-      req.validate?.(props, push);
-    });
-
-    /* ---------- 5) Request-time unresolved-token safety net ---------- */
+    // Unresolved tokens (using recursive proxy to simulate presence)
     const dummyCtx = {
-      args:     new Proxy({}, { get: (_t, k) => `__ARG_${String(k)}__` }),
-      response: new Proxy({}, { get: (_t, k) => `__RESP_${String(k)}__` }),
-      secrets:  new Proxy({}, { get: (_t, k) => `__SECRET_${String(k)}__` }),
-      status:   200,
-      ...(options?.dummyCtx || {}),
+      args: createRecursiveProxy("__ARG"),
+      secrets: createRecursiveProxy("__SECRET"),
+      response: createRecursiveProxy("__RESP"),
+      status: 200,
+      ...options?.dummyCtx,
     };
     const reqCtx = { args: dummyCtx.args, secrets: dummyCtx.secrets };
+    const reqRequired = inferRequiredArgs(d);
 
-    const renderedUrl     = applyTemplate(d.http?.urlTemplate ?? "", reqCtx);
-    const renderedHeaders = applyTemplate(d.http?.headers ?? {}, reqCtx);
-    const renderedBody    = applyTemplate(d.http?.jsonBodyTemplate ?? {}, reqCtx);
+    const checkUnresolved = (value: any, where: string) => {
+      const templated = applyTemplate(value, reqCtx);
+      if (hasUnresolvedTokens(templated)) {
+        const missing = collectTokens(value).filter((tok) => getByPath(reqCtx, tok) === undefined);
+        if (missing.length) {
+          issues.push({
+            severity: "error",
+            code: "request.unresolved_tokens",
+            path: where,
+            message: `Unresolved tokens in ${where}: ${missing.join(", ")}.`,
+            suggestion: "Ensure valid roots and add missing required parameters.",
+          });
+        }
+      }
+    };
 
-    if (hasUnresolvedTokens(renderedUrl)) {
-      issues.push({
-        severity: "error",
-        code: "request.unresolved_tokens",
-        path: "http.urlTemplate",
-        message: "Unresolved tokens remain after templating urlTemplate with args/secrets.",
-        suggestion: "Fix token names or add the missing args.* keys.",
-      });
-    }
-    if (hasUnresolvedTokens(renderedHeaders)) {
-      issues.push({
-        severity: "error",
-        code: "request.unresolved_tokens",
-        path: "http.headers",
-        message: "Unresolved tokens remain in headers after templating with args/secrets.",
-        suggestion: "Fix token names or add the missing args.* keys.",
-      });
-    }
-    if (hasUnresolvedTokens(renderedBody)) {
-      issues.push({
-        severity: "error",
-        code: "request.unresolved_tokens",
-        path: "http.jsonBodyTemplate",
-        message: "Unresolved tokens remain in jsonBodyTemplate after templating with args/secrets.",
-        suggestion: "Fix token names or add the missing args.* keys.",
-      });
-    }
+    checkUnresolved(d.http?.urlTemplate, "http.urlTemplate");
+    checkUnresolved(d.http?.headers, "http.headers");
+    checkUnresolved(d.http?.jsonBodyTemplate, "http.jsonBodyTemplate");
 
     results.push({
       name: d.name,
@@ -249,6 +196,5 @@ export function lintHttpToolDescriptors(
       linterVersion: LINTER_VERSION,
     });
   }
-
   return results;
 }

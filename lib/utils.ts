@@ -134,7 +134,7 @@ type Dict = Record<string, any>;
  *   getByPath({ a: [{ id: 9 }] }, "a.0.id")  -> 9
  *   getByPath({}, "x.y")                     -> undefined
  */
-function getByPath(obj: any, path: string) {
+export function getByPath(obj: any, path: string) {
   return path.split(".").reduce((acc, k) => (acc == null ? acc : acc[k]), obj);
 }
 

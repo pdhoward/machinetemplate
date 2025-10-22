@@ -13,9 +13,9 @@ type Summary = { unit?: string; checkIn?: string; checkOut?: string };
 export type PaymentFormProps = {
   tenantId: string;
   reservationId?: string;
-  amountCents: number;
+  amountCents:  number | string; 
   currency?: string;
-  clientSecret?: string;          // REQUIRED (provided by your HTTP tool)
+  clientSecret?: string;          // REQUIRED (provided by HTTP tool)
   prefill?: Prefill;
   summary?: Summary;
   publishableKey?: string;        // optional per-tenant override
@@ -25,6 +25,12 @@ export type PaymentFormProps = {
 
 // ---- NEVER call useStripe/useElements here ----
 export default function PaymentForm(props: PaymentFormProps) {
+
+  // Parse amountCents to number early (handles string from templates)
+  const parsedAmountCents = typeof props.amountCents === "string" 
+    ? Number(props.amountCents) 
+    : props.amountCents;
+
   // 1) publishable key
   const pk = props.publishableKey ?? process.env.NEXT_PUBLIC_STRIPE_VOX_PUBLIC_KEY;
   if (!pk) {
@@ -38,13 +44,19 @@ export default function PaymentForm(props: PaymentFormProps) {
     );
   }
 
-  // 2) must have clientSecret (tool should provide it)
+  // 2) must have clientSecret from STRIPE (provided by tool api call to 3rd party platform)
   const hasRequired =
     !!props.tenantId &&
-    Number.isFinite(props.amountCents) &&
-    props.amountCents > 0 &&
+    Number.isFinite(parsedAmountCents) &&
+    parsedAmountCents > 0 &&
     typeof props.clientSecret === "string" &&
     props.clientSecret.length > 0;
+
+  console.log(`--------------debug payment form------------`)
+  console.log(`hasRequired is ${hasRequired}`)
+  console.log(props.tenantId, parsedAmountCents, props.clientSecret)
+  console.log(typeof props.clientSecret === "string")
+  console.log(Number.isFinite(props.amountCents))
 
   if (!hasRequired) {
     return (
@@ -69,7 +81,7 @@ export default function PaymentForm(props: PaymentFormProps) {
       stripe={stripePromise}
       options={{ clientSecret: props.clientSecret!, appearance: { theme: "night" } }}
     >
-      <ConfirmedElementsForm {...props} />
+      <ConfirmedElementsForm {...props} amountCents={parsedAmountCents} />
     </Elements>
   );
 }

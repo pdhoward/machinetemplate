@@ -35,7 +35,6 @@ type LintResponse = {
   error?: string;
 };
 
-
 function SummaryCard({
   label,
   value,
@@ -80,7 +79,6 @@ function Badge({
   return <span className={`${base} ${cls}`}>{children}</span>;
 }
 
-
 export default function LintAdminPage() {
   const { tenantId } = useTenant();
   const [loading, setLoading] = React.useState(true);
@@ -112,14 +110,14 @@ export default function LintAdminPage() {
     runLint();
   }, [runLint]);
 
-   const linterVersion =
+  const linterVersion =
     data?.linterVersion ??
     data?.report?.[0]?.linterVersion ??
     "unknown";
 
   return (
-    <div className="mx-auto max-w-6xl p-4 sm:p-6">
-      <header className="mb-4 sm:mb-6 flex items-center justify-between gap-3">
+    <div className="mx-auto max-w-6xl p-4 xs:p-6">
+      <header className="mb-4 xs:mb-6 flex flex-col xs:flex-row items-start xs:items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold flex items-center gap-3">
             Tool Lint Report
@@ -131,7 +129,7 @@ export default function LintAdminPage() {
         </div>
         <button
           onClick={runLint}
-          className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-100 active:bg-neutral-200"
+          className="mt-2 xs:mt-0 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-100 active:bg-neutral-200"
         >
           Re-run
         </button>
@@ -152,7 +150,7 @@ export default function LintAdminPage() {
       ) : (
         <>
           {/* Summary cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4 ">
+          <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
             <SummaryCard label="Total tools" value={data.meta?.total ?? 0} />
             <SummaryCard label="Errors" value={data.meta?.totalErrors ?? 0} tone="error" />
             <SummaryCard label="Warnings" value={data.meta?.totalWarnings ?? 0} tone="warn" />
@@ -175,9 +173,9 @@ export default function LintAdminPage() {
             </div>
           )}
 
-          {/* Results table */}
+          {/* Results table - stacked on mobile */}
           <div className="overflow-x-auto rounded-lg border border-neutral-200">
-            <table className="min-w-full text-sm">
+            <table className="min-w-full text-sm divide-y divide-neutral-200 [&>thead]:hidden [&>thead]:md:table-header-group [&>tbody>tr]:block [&>tbody>tr]:mb-4 [&>tbody>tr]:border-b [&>tbody>tr]:md:table-row [&>tbody>tr>td]:block [&>tbody>tr>td]:text-right [&>tbody>tr>td]:border-b [&>tbody>tr>td]:md:table-cell [&>tbody>tr>td]:md:text-left [&>tbody>tr>td]:md:border-0 [&>tbody>tr>td]:before:content-[attr(data-label)] [&>tbody>tr>td]:before:float-left [&>tbody>tr>td]:before:font-medium [&>tbody>tr>td]:before:md:hidden md:table md:divide-y">
               <thead className="bg-neutral-900 text-neutral-600">
                 <tr>
                   <th className="px-3 py-2 text-left font-medium">Tool</th>
@@ -194,14 +192,14 @@ export default function LintAdminPage() {
 
                   return (
                     <tr key={idx} className="hover:bg-neutral-900">
-                      <td className="px-3 py-2">
+                      <td data-label="Tool" className="px-3 py-2">
                         <div className="font-medium">{r.name}</div>
                         <div className="text-xs text-neutral-500">{r.tenantId || ""}</div>
                       </td>
-                      <td className="px-3 py-2">
+                      <td data-label="Enabled" className="px-3 py-2">
                         <Badge tone={r.enabled ? "ok" : "muted"}>{r.enabled ? "Yes" : "No"}</Badge>
                       </td>
-                      <td className="px-3 py-2">
+                      <td data-label="Issues" className="px-3 py-2">
                         {ok ? (
                           <div className="flex items-center gap-2">
                             <Badge tone="ok">No issues</Badge>
@@ -213,7 +211,7 @@ export default function LintAdminPage() {
                           </div>
                         )}
                       </td>
-                      <td className="px-3 py-2">
+                      <td data-label="Details" className="px-3 py-2">
                         {ok ? (
                           <span className="text-neutral-400">—</span>
                         ) : (

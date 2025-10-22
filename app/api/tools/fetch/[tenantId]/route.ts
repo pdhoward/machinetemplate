@@ -1,9 +1,11 @@
+// src/app/api/tools/fetch/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import getMongoConnection  from "@/db/connections";
+import getMongoConnection from "@/db/connections";
 import {
   ToolRegistryArraySchema,
   type ToolRegistryItem,
 } from "@/types/toolRegistry.schema";
+import { lintHttpToolDescriptors, LINTER_VERSION } from "@/lib/validator/lint-tools";
 
 /**
  * GET /api/tools/fetch/:tenantId
@@ -28,20 +30,16 @@ function unwrapMongoExtendedJSON(v: any): any {
   return v;
 }
 
-export async function GET( req: NextRequest, { params }: { params: Promise<{ tenantId: string }> } ) {
+export async function GET(req: NextRequest, { params }: { params: Promise<{ tenantId: string }> }) {
   
-  const {tenantId} = await params
+  const { tenantId } = await params;
   
   try {    
-
     if (!tenantId) {
-      return NextResponse.json(
-        { ok: false, error: "tenantId is required" },
-        { status: 400 }
-      );
+      throw new Error("tenantId is required");
     }
 
-    const {db} = await getMongoConnection(process.env.DB!, process.env.MAINDBNAME!);
+    const { db } = await getMongoConnection(process.env.DB!, process.env.MAINDBNAME!);
 
     // Pull all enabled items for the tenant
     const rows = await db
@@ -52,26 +50,27 @@ export async function GET( req: NextRequest, { params }: { params: Promise<{ ten
     // Normalize Mongo-specific fields and number wrappers
     const normalized = rows.map((r) => {
       const { _id, ...rest } = r as Record<string, any>;
-
-      // unwrap {$numberInt: "..."} etc.
-      const unwrap = (v: any) =>
-        v && typeof v === "object" && "$numberInt" in v
-          ? parseInt(v.$numberInt, 10)
-          : v;
-
-      if (rest.version) rest.version = unwrap(rest.version);
-      if (rest.http?.timeoutMs) rest.http.timeoutMs = unwrap(rest.http.timeoutMs);
-
       return unwrapMongoExtendedJSON(rest);
     });
 
-    // Validate with Zod (and narrow typing)
-    const validated: ToolRegistryItem[] =
-      ToolRegistryArraySchema.parse(normalized);
+    // Run linter on normalized items (handles schema validation and other checks)
+    const report = lintHttpToolDescriptors(normalized);
+
+    // Check for any error-severity issues
+    const errorIssues = report.flatMap(r => r.issues.filter(i => i.severity === "error"));
+    if (errorIssues.length > 0) {
+      const summary = errorIssues.map(i => `${i.code} at ${i.path}: ${i.message}`).join("; ");
+      throw new Error(`Lint errors detected: ${summary}`);
+    }
+
+    // If no errors, validate with Zod (redundant but kept for type narrowing)
+    const validated: ToolRegistryItem[] = ToolRegistryArraySchema.parse(normalized);
 
     return NextResponse.json(validated, { status: 200 });
   } catch (err: any) {
     console.error("[tools/fetch] error:", err);
+    // In Next.js API routes, throwing errors results in a 500 response with { error: message }
+    // If called from a page, error.tsx can catch and display it user-friendly
     return NextResponse.json(
       { ok: false, error: String(err?.message || err) },
       { status: 500 }

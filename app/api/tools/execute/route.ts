@@ -1,14 +1,7 @@
 // src/app/api/tools/execute/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import {
-  tpl,
-  applyTemplate,
-  pruneEmpty,
-  hasUnresolvedTokens,
-  inferRequiredArgs,
-  findMissingRequestTokens,
-  stripEmptyQueryParams,
-} from "@/lib/utils";
+
+import { tpl, applyTemplate, pruneEmpty } from "@/lib/utils";
 
 /** Simple trace id for correlating logs across hops */
 const mkTraceId = (prefix = "exec") =>
@@ -27,16 +20,6 @@ function redactHeaders(h: Record<string, string>) {
   return out;
 }
 
-function inferRequiredArgs(descriptor: any): Set<string> {
-  const req = new Set<string>();
-  const params: any = descriptor?.parameters || {};
-  if (params && typeof params === "object" && Array.isArray(params.required)) {
-    for (const k of params.required) if (typeof k === "string") req.add(k);
-  }
-  return req;
-}
-
-
 /** Truncate large payloads to keep logs readable */
 function snap(v: unknown, n = 1500) {
   try {
@@ -54,7 +37,30 @@ function resolveSecret(path: string, tenantId?: string): string {
   if (path === "secrets.booking_api_key") {
     return process.env.BOOKING_API_KEY ?? "";
   }
+  // TODO: In production, fetch from secure store based on tenantId
+  // e.g., const secretValue = await getSecretFromVault(tenantId, path);
   return "";
+}
+
+// Enhanced URL validation to prevent SSRF
+function validateUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    const protocol = parsed.protocol.toLowerCase();
+    if (protocol !== "http:" && protocol !== "https:") {
+      throw new Error(`Invalid protocol: ${protocol}. Only http/https allowed.`);
+    }
+    // Optional: Add allowlist for hosts/domains if needed
+    // if (!allowedHosts.has(parsed.hostname)) throw new Error("Host not allowed");
+    // Prevent localhost/internal IPs (basic SSRF mitigation)
+    const hostname = parsed.hostname.toLowerCase();
+    if (hostname === "localhost" || hostname.startsWith("127.") || hostname.startsWith("192.168.") || hostname.startsWith("10.") || hostname === "[::1]") {
+      throw new Error("Access to internal/localhost URLs is prohibited.");
+    }
+    return parsed.toString();
+  } catch (err: any) {
+    throw new Error(`Invalid URL: ${err.message}`);
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -62,6 +68,13 @@ export async function POST(req: NextRequest) {
   try {
     const started = Date.now();
     const { descriptor, args } = await req.json();
+
+    if (!descriptor || typeof descriptor !== "object" || !descriptor.http) {
+      throw new Error("Invalid descriptor: http config required.");
+    }
+    if (!args || typeof args !== "object") {
+      throw new Error("Invalid args: object required.");
+    }
 
     const toolName: string = descriptor?.name ?? "(unknown)";
     const tenantId: string | undefined = args?.tenant_id;
@@ -75,34 +88,29 @@ export async function POST(req: NextRequest) {
 
     const ctx = { ...args, args, secrets: secretsProxy };
 
-    const method = descriptor?.http?.method ?? "POST";
-    const urlTmpl = String(descriptor.http?.urlTemplate || "");
-    const urlMissing = findMissingTokens(urlTmpl, ctx);
-    if (urlMissing.length) {
-      throw new Error(`Unresolved tokens in urlTemplate: ${urlMissing.join(", ")}`);
+    const method = descriptor?.http?.method?.toUpperCase() ?? "POST";
+    const rawUrl = String(descriptor.http.urlTemplate || "");
+    if (!rawUrl) {
+      throw new Error("urlTemplate is required in http config.");
     }
-    const templatedUrl = tpl(urlTmpl, ctx);
+    const templatedUrl = tpl(rawUrl, ctx);
 
-    if (hasUnresolvedTokens(templatedUrl)) {
-        throw new Error(`Unresolved tokens in URL: ${templatedUrl}`);
-    }
-
-    // Build absolute URL for server-side fetch
+    // Build and validate URL
     const proto = req.headers.get("x-forwarded-proto") ?? "http";
-    const host  = req.headers.get("host") ?? "localhost";
-    const url = /^(?:https?:)?\/\//.test(templatedUrl)
-      ? templatedUrl
-      : new URL(templatedUrl, `${proto}://${host}`).toString();
-
-    // Headers validation
-    const headerTemplate = descriptor.http?.headers ?? {};
-    const hdrMissing = findMissingTokens(headerTemplate, ctx);
-    if (hdrMissing.length) {
-      throw new Error(`Unresolved tokens in headers: ${hdrMissing.join(", ")}`);
+    const host = req.headers.get("host") ?? "localhost";
+    let targetUrl = templatedUrl;
+    if (!/^(?:https?:)?\/\//.test(templatedUrl)) {
+      // Relative URL: prepend base
+      targetUrl = new URL(templatedUrl, `${proto}://${host}`).toString();
     }
-    const headers: Record<string, string> = Object.fromEntries(
-      Object.entries(headerTemplate).map(([k, v]) => [k, tpl(String(v), ctx)])
-    );
+    targetUrl = validateUrl(targetUrl);  // SSRF protection
+
+    // Headers templating
+    const headerTemplate = descriptor.http?.headers ?? {};
+    const headers: Record<string, string> = {};
+    for (const [k, v] of Object.entries(headerTemplate)) {
+      headers[k] = tpl(String(v), ctx);
+    }
     headers["x-trace-id"] = traceId; // pass through for downstream services
 
     // Template/prepare body
@@ -110,28 +118,18 @@ export async function POST(req: NextRequest) {
     let bodyObj: any = undefined;
 
     if (descriptor.http?.jsonBodyTemplate != null) {
-      // 1) Validate tokens exist in ctx (args / secrets only at request-time)
-      const missing = findMissingTokens(descriptor.http.jsonBodyTemplate, ctx);
-      if (missing.length) {
-        throw new Error(
-          `Unresolved tokens in request body: ${missing.join(", ")}`
-        );
-      }
-      // 2) Apply template
       bodyObj = applyTemplate(descriptor.http.jsonBodyTemplate, ctx);
-      // 3) Optionally prune empties (keeps your wire payload compact/valid)
       if (descriptor.http.pruneEmpty) {
         bodyObj = pruneEmpty(bodyObj);
       }
-      // 4) Stringify for fetch
       body = JSON.stringify(bodyObj);
+      if (!headers["content-type"]) {
+        headers["content-type"] = "application/json";
+      }
     }
 
-
-    
-
     // ---- OUTBOUND LOG -----------------------------------------------------
-    console.log(`[EXEC] ${traceId} → ${method} ${url}`, {
+    console.log(`[EXEC] ${traceId} → ${method} ${targetUrl}`, {
       tool: toolName,
       tenantId,
       okField: descriptor.http.okField ?? "(http 2xx)",
@@ -140,10 +138,11 @@ export async function POST(req: NextRequest) {
     });
 
     // Do the call
+    const timeoutMs = Number(descriptor.http.timeoutMs) || 15000;
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), descriptor.http.timeoutMs ?? 15_000);
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
-    const r = await fetch(url, { method, headers, body, signal: controller.signal });
+    const r = await fetch(targetUrl, { method, headers, body, signal: controller.signal });
     clearTimeout(timeout);
 
     const text = await r.text();
@@ -154,7 +153,7 @@ export async function POST(req: NextRequest) {
       response: snap(text),
     });
 
-    // Return JSON if possible
+    // Return JSON if possible, else text
     try {
       const j = JSON.parse(text);
       return NextResponse.json(j, { status: r.status });
@@ -166,6 +165,6 @@ export async function POST(req: NextRequest) {
       error: err?.message || String(err),
       stack: err?.stack,
     });
-    return NextResponse.json({ ok: false, error: String(err?.message || err) }, { status: 500 });
+    return NextResponse.json({ ok: false, error: err?.message || "server_error" }, { status: 500 });
   }
 }

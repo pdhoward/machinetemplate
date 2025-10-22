@@ -154,6 +154,20 @@
          }
        }
        ```
+ Validation of Data Against SchemaI validated the provided tool descriptors (the actions array) against the Zod schema (HttpToolDescriptorSchema). All 6 tools parse successfully without errors, meaning they are structurally consistent and compatible with the schema. Here's a summary:Key Compatibilities:All tools have required fields like kind: "http_tool", name, http.method, http.urlTemplate.
+parameters match the permissive JSON Schema-ish structure (object with type, required, properties, etc.).
+http configs are valid (methods are correct enums, timeouts are positive integers ≤120000, etc.).
+ui sections (where present) match HttpUISchema: component_name is string, size is valid enum, props are JSON-like.
+Optional fields like description, priority, version, enabled are handled correctly.
+Nested structures (e.g., guest and payment in booking_reserve) validate per their schemas (types, patterns, enums, min/max).
+
+Minor Notes (Not Errors):Some tools use pattern in parameters (e.g., date regex), which is allowed as the schema is permissive.
+jsonBodyTemplate can be complex objects with templates, which parses fine as JsonValue.
+No invalid enums or types found.
+The schema defaults kind to "http_tool" and enabled to true, which aligns with the data.
+
+If you add new tools in the future, this schema will enforce consistency. The data represents a solid "standard" for well-formed descriptors.
+
 
   4. **Save and Upload**: Use the MongoDB Updater tool to store the descriptors under your tenantId (e.g., collection: "tools").
 
