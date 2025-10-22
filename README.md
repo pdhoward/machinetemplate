@@ -28,7 +28,7 @@ Runtime behavior (from /api/tools/execute):
 5) Keep okField aligned with the API’s success shape (e.g., "ok" or "clientSecret").
 6) If your API needs auth, use {{secrets.*}} in headers; the server will inject the secret.
 
-Why this will “just work”
+#### Why this will “just work”
 
 Numbers are numbers (| number) when they hit your APIs or UI props—no more "79000" surprises.
 
