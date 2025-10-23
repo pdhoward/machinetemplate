@@ -20,7 +20,7 @@ import { Send } from "lucide-react";
 import { motion } from "framer-motion";
 
 import { useToolsFunctions } from "@/hooks/use-tools";
-import { useVisualFunctions } from "@/hooks/use-visuals";
+import { useVisualFunctions } from "@/hooks/use-visuals"; //show_component
 import { useTranscriptSink } from "@/hooks/use-transcript-sink";
 
 import {Diagnostics} from "@/components/diagnostics"

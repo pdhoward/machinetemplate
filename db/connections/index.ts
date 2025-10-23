@@ -3,13 +3,20 @@
 ////////   mongoDB connection manager         ///////
 ////////////////////////////////////////////////////
 
-import { MongoClient, Db } from 'mongodb';
+import { MongoClient, Db, ServerApiVersion } from 'mongodb';
 import { LRUCache } from 'lru-cache';
 
 // Maintain up to x socket connections  
 const dbOptions = {
   maxConnecting: 10       
 };
+
+const serverApi= {
+    version: ServerApiVersion.v1,
+    strict: true,
+    deprecationErrors: true,
+  }
+
 
 const cacheOptions = {
   max: 500,    
@@ -28,7 +35,10 @@ async function getMongoConnection(url: string, dbName: string): Promise<{ client
       
       if (!client) {
           console.info('Creating new connection for ' + url);
-          client = new MongoClient(url, dbOptions);
+          client = new MongoClient(url, {
+              serverApi: serverApi,  // Nested under 'serverApi'
+              ...dbOptions           // other top-level options like maxConnecting
+          });
           await client.connect();
           console.info('MongoDB server connection live');
           cache.set(url, client);
