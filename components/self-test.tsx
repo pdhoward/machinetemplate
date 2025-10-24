@@ -42,7 +42,7 @@ export default function SelfTest({
   forceToolCall,
   getEventsCount,
   mockShowComponent,
-  expectedComponent = "payment_form",
+  expectedComponent = "reservation_checkout",
   autoStart = false, // ← no self-start by default
   className = "",
   buttonClassName = "inline-flex items-center justify-center rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium h-7 px-3",

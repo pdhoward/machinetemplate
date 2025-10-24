@@ -72,11 +72,10 @@ type TMediaItem = z.infer<typeof VisualMediaItem>;
 
 export const VisualPayloadSchema = z
   .object({
-    component_name: z.enum([
-      "payment_form",
+    component_name: z.enum([      
       "quote_summary",
       "catalog_results",
-      "reservation_confirmation",
+      "reservation_checkout",
       "room",
       "video",
       "image_viewer",
@@ -166,10 +165,9 @@ function autoRoute(input: any) {
 
     // 2) ⬇️ intent hints (only if component_name is missing)
   if (!p.component_name && typeof p.intent === "string") {
-    const map: Record<string, string> = {
-      payment: "payment_form",
+    const map: Record<string, string> = {     
       quote: "quote_summary",
-      reservation_confirmation: "reservation_confirmation",
+      reservation_checkout: "reservation_checkout",
       room: "room",
       media: "media_gallery",
       video: "video",

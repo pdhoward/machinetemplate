@@ -65,3 +65,10 @@ https://myaccount.google.com/apppasswords
 https://www.val.town/x/jubertioai/hello-realtime
 
 425-800-0073
+
+* example of agent orchestration
+https://github.com/midday-ai/ai-sdk-tools/tree/main/apps/example
+
+* using resend for email
+https://github.com/resend/resend-nextjs-useactionstate-example
+https://useworkflow.dev/

@@ -30,6 +30,7 @@ type Props = {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   payload: VisualPayload | null;
+  /** Allows a visual to atomically swap itself for another visual */
   onReplace?: (next: VisualPayload) => void;
 };
 
@@ -43,10 +44,9 @@ const sizeToMaxWidth: Record<NonNullable<VisualPayload["size"]>, string> = {
 
 // Components that render their own chrome (header/close etc.)
 const HAS_OWN_CHROME = new Set([
-  "payment_form",
   "quote_summary",
   "catalog_results",
-  "reservation_confirmation",
+  "reservation_checkout", // ← unified checkout visual
   "room",
   "media_gallery",
   "image_viewer",
@@ -84,7 +84,6 @@ export default function VisualStage({ open, onOpenChange, payload, onReplace }: 
   console.log("open:", open);
   console.log("payload:", payload);
   console.groupEnd();
-  
 
   // Don’t portal anything if closed or no payload
   if (!open || !payload) return null;
@@ -96,6 +95,22 @@ export default function VisualStage({ open, onOpenChange, payload, onReplace }: 
 
   const Comp = payload.component_name ? getVisualComponent(payload.component_name) : null;
 
+  // host bridge for visuals to interact with the stage & voice agent
+  const say = (text: string) => {
+    try {
+      // fire a custom event; your agent can subscribe and speak immediately
+      window.dispatchEvent(new CustomEvent("agent-say", { detail: { text } }));
+    } catch { /* no-op */ }
+  };
+  const host = {
+    /** replace the current visual with a new one */
+    replace: (next: VisualPayload) => onReplace?.(next),
+    /** close the modal */
+    close: () => onOpenChange(false),
+    /** ask the agent to speak a line immediately */
+    say,
+  };
+
   // Mirror top-level → props so legacy callers still work
   const mergedProps: Record<string, any> = {
     ...(payload.props || {}),
@@ -104,70 +119,19 @@ export default function VisualStage({ open, onOpenChange, payload, onReplace }: 
     ...(payload.description && !payload.props?.description ? { description: payload.description } : {}),
     ...(payload.url && !payload.props?.url ? { url: payload.url } : {}),
     compact: true,
+    /** provide host bridge to all visuals in a consistent, opt-in way */
+    host,
   };
-
-  if (payload.component_name === "payment_form") {
-  console.log("[VisualStage] payment_form props:", mergedProps);
-  // Expect: tenantId, reservationId, amountCents (number), currency, clientSecret
-  console.log(`amounts cents type is ...`, typeof mergedProps.amountCents)
- }
-
-   // 🔽 INSERT THIS BLOCK: wrap onPaid for payment_form
-  if (payload.component_name === "payment_form") {
-    const userOnPaid = mergedProps.onPaid as (undefined | ((i: { paymentIntentId: string }) => void));
-    mergedProps.onPaid = async (info: { paymentIntentId: string }) => {
-      try { userOnPaid?.(info); } catch {}
-      // swap to a confirmation visual (or any visual you like)
-      onReplace?.({
-        component_name: "reservation_confirmation",
-        title: "Payment received",
-        description: `Payment confirmed (PI ${info.paymentIntentId.slice(0, 10)}…).`,
-        size: "md",
-        props: {
-          paymentIntentId: info.paymentIntentId,
-          // you can pass more props for your confirmation component here
-        }
-      });
-    };
-  }
 
   const showHeader = payload.component_name ? !HAS_OWN_CHROME.has(payload.component_name) : true;
   const titleId = "visual-stage-title";
   const descId = "visual-stage-desc";
-
-   // 👇 helper for immediate agent speech
-  const say = (text: string) => {
-    window.dispatchEvent(new CustomEvent("agent-say", { detail: { text } }));
-  };
-
-  // 👇 If this is the payment form, compose a default onPaid
-  if (payload.component_name === "payment_form") {
-    const userOnPaid = mergedProps.onPaid as ((info: { paymentIntentId: string }) => void) | undefined;
-    mergedProps.onPaid = (info: { paymentIntentId: string }) => {
-      // 1) Tenant override runs first
-      userOnPaid?.(info);
-
-      // 2) Swap to a confirmation visual (if host provided onReplace)
-      onReplace?.({
-        component_name: "reservation_confirmation",
-        title: "Payment received",
-        description: `Your payment is confirmed. Reference: ${info.paymentIntentId}`,
-        size: "md",
-        props: { paymentIntentId: info.paymentIntentId },
-      });
-
-      // 3) Let the agent acknowledge immediately
-      say("Thanks! Your payment has been received and your booking is confirmed.");
-    };
-  }
-
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         aria-labelledby={titleId}
         aria-describedby={description ? descId : undefined}
-        // Restored modal styling & centering (same spirit as your original)
         className={[
           // Surface & stacking
           "bg-neutral-900 text-neutral-200 border border-neutral-800 overflow-hidden z-[120]",

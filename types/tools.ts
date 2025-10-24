@@ -44,11 +44,10 @@ export const coreTools: ToolDef[] = [
     properties: {
       component_name: {
         type: "string",
-        enum: [
-          "payment_form",
+        enum: [          
           "quote_summary",
           "catalog_results",
-          "reservation_confirmation",
+          "reservation_checkout",
           "room",
           "video",
           "image_viewer",
@@ -57,7 +56,7 @@ export const coreTools: ToolDef[] = [
       },
       intent: {
         type: "string",
-        enum: ["payment","quote","reservation_confirmation","results","room","media","video","image"]
+        enum: [,"quote","reservation_checkout","results","room","media","video","image"]
       },
       title: { type: "string" },
       description: { type: "string" },

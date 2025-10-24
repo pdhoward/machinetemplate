@@ -1,18 +1,18 @@
 // lint-tools.ts
 // Lints HttpToolDescriptor[] for common templating & UI mistakes.
 
-import { 
-  collectTokens, 
-  stripFilters, 
-  inferRequiredArgs, 
-  applyTemplate, 
-  hasUnresolvedTokens, 
-  getByPath 
-} from "@/lib/utils"; // Assume utilities path
+import {
+  collectTokens,
+  stripFilters,
+  inferRequiredArgs,
+  applyTemplate,
+  hasUnresolvedTokens,
+  getByPath,
+} from "@/lib/utils";
 
-import { HttpToolDescriptorSchema } from "@/types/httpTool.schema"; 
+import { HttpToolDescriptorSchema } from "@/types/httpTool.schema";
 
-export const LINTER_VERSION = "http-linter@1.0.3";
+export const LINTER_VERSION = "http-linter@1.0.5"; // bumped
 
 type Severity = "error" | "warning";
 
@@ -32,28 +32,21 @@ export type LintResult = {
   linterVersion?: string;
 };
 
-type ComponentReqs = Record<string, { requiredProps?: string[] }>; // Simplified; removed validate fn for now
-
-const defaultComponentReqs: ComponentReqs = {
-  payment_form: { requiredProps: ["tenantId", "amountCents", "clientSecret", "reservationId"] }, // Added reservationId based on data
-};
-
 const REQUEST_ALLOWED_ROOTS = new Set(["args", "secrets"]);
 const UI_ALLOWED_ROOTS = new Set(["args", "response", "status"]);
 
 // Recursive proxy for dummy values (handles nested paths)
 function createRecursiveProxy(prefix: string): any {
-  return new Proxy({}, {
-    get: (_target, prop: string | symbol) => {
-      if (typeof prop === "symbol") {
-        return undefined;
-      }
-      if (prop === "toString" || prop === "valueOf") {
-        return () => prefix;
-      }
-      return createRecursiveProxy(`${prefix}_${prop}`);
-    },
-  });
+  return new Proxy(
+    {},
+    {
+      get: (_target, prop: string | symbol) => {
+        if (typeof prop === "symbol") return undefined;
+        if (prop === "toString" || prop === "valueOf") return () => prefix;
+        return createRecursiveProxy(`${prefix}_${prop}`);
+      },
+    }
+  );
 }
 
 function walkJson(value: unknown, cb: (path: string, str: string) => void, path: string[] = []) {
@@ -65,20 +58,17 @@ function walkJson(value: unknown, cb: (path: string, str: string) => void, path:
 }
 
 export function lintHttpToolDescriptors(
-  descriptors: any[], // Loose type for flexibility
-  options?: { componentReqs?: ComponentReqs; dummyCtx?: Record<string, any> }
+  descriptors: any[],
+  options?: { dummyCtx?: Record<string, any> }
 ): LintResult[] {
   const results: LintResult[] = [];
-  const compReqs = options?.componentReqs ?? defaultComponentReqs;
 
   for (const d of descriptors) {
     const issues: LintIssue[] = [];
-    
-    const parsed = HttpToolDescriptorSchema.safeParse(d);
 
-    // first pass test of the objects based on schema
+    // 1) Schema validation (Zod)
+    const parsed = HttpToolDescriptorSchema.safeParse(d);
     if (!parsed.success) {
-    // Add one issue per Zod error for clarity
       parsed.error.issues.forEach((zIssue) => {
         issues.push({
           severity: "error",
@@ -88,11 +78,10 @@ export function lintHttpToolDescriptors(
           suggestion: "Fix the schema violation in the tool descriptor.",
         });
       });
+      // continue to surface additional issues
     }
 
-
-
-    // Unified token root check (for requests and UI)
+    // 2) Token root checks
     const checkTokenRoots = (value: any, where: string, allowedRoots: Set<string>) => {
       walkJson(value, (at, str) => {
         for (const raw of collectTokens(str)) {
@@ -118,14 +107,20 @@ export function lintHttpToolDescriptors(
       REQUEST_ALLOWED_ROOTS
     );
 
-    // UI parts
+    // UI parts — validate emit_show_component & emit_say (string or object)
     checkTokenRoots(
-      { loadingMessage: d.ui?.loadingMessage, onSuccess: d.ui?.onSuccess?.open, onError: d.ui?.onError?.open },
+      {
+        loadingMessage: d.ui?.loadingMessage,
+        onSuccess_emit_show_component: d.ui?.onSuccess?.emit_show_component,
+        onError_emit_show_component: d.ui?.onError?.emit_show_component,
+        onSuccess_emit_say: d.ui?.onSuccess?.emit_say,
+        onError_emit_say: d.ui?.onError?.emit_say,
+      },
       "ui",
       UI_ALLOWED_ROOTS
     );
 
-    // okField sanity
+    // 3) okField sanity
     const ok = d.http?.okField;
     if (ok && !/^[A-Za-z0-9_.[\]]+$/.test(ok)) {
       issues.push({
@@ -136,28 +131,7 @@ export function lintHttpToolDescriptors(
       });
     }
 
-    // Component prop checks
-    ["onSuccess", "onError"].forEach((branch) => {
-      const open = d.ui?.[branch]?.open;
-      if (!open) return;
-      const comp = open.component_name || "";
-      const req = compReqs[comp];
-      if (!req?.requiredProps) return;
-      const props = open.props || {};
-      req.requiredProps.forEach((key) => {
-        if (!(key in props)) {
-          issues.push({
-            severity: "error",
-            code: "ui.required_prop_missing",
-            path: `ui.${branch}.open.props.${key}`,
-            message: `"${comp}" requires props.${key}.`,
-            suggestion: `Add: "${key}": "{{response.${key}}}" or a literal.`,
-          });
-        }
-      });
-    });
-
-    // Unresolved tokens (using recursive proxy to simulate presence)
+    // 4) Unresolved tokens in request objects
     const dummyCtx = {
       args: createRecursiveProxy("__ARG"),
       secrets: createRecursiveProxy("__SECRET"),
@@ -166,7 +140,7 @@ export function lintHttpToolDescriptors(
       ...options?.dummyCtx,
     };
     const reqCtx = { args: dummyCtx.args, secrets: dummyCtx.secrets };
-    const reqRequired = inferRequiredArgs(d);
+    const reqRequired = inferRequiredArgs(d); // (kept for future use if needed)
 
     const checkUnresolved = (value: any, where: string) => {
       const templated = applyTemplate(value, reqCtx);
@@ -196,5 +170,6 @@ export function lintHttpToolDescriptors(
       linterVersion: LINTER_VERSION,
     });
   }
+
   return results;
 }

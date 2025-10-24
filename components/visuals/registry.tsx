@@ -17,8 +17,7 @@ const loaders: Record<string, VisualLoader> = {
   room: () => import("./RoomGallery"),
   quote_summary: () => import("./QuoteSummary"),
   catalog_results: () => import("./CatalogResults"),
-  reservation_confirmation: () => import("./ReservationConfirmation"),
-  payment_form: () => import("./PaymentForm"),
+  reservation_checkout: () => import("./ReservationCheckout"),
 };
 
 // Allow dynamic plugins/extensions at runtime (client-side)
