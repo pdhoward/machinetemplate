@@ -2,53 +2,8 @@
 import type { ToolDef } from "@/types/tools";
 import { applyTemplate, hasUnresolvedTokens } from "@/lib/utils";
 import { toast } from "sonner";
+import type { HttpToolDescriptor, UIAction } from "@/types/httpTool.schema";
 
-
-
-type ShowArgsTemplate = {
-  component_name: string;
-  title?: string;
-  description?: string;
-  size?: "sm" | "md" | "lg" | "xl";
-  props?: any;
-  media?: any; // allow templated structures
-  url?: string;
-};
-
-type UIInstructionTemplate = {
-  open?: ShowArgsTemplate;
-  close?: boolean;
-};
-
-export type HttpDescriptor = {
-  kind?: string; // "http_tool"
-  name: string;
-  description?: string;
-  parameters?: any; // JSON Schema for tool args
-  enabled?: boolean;
-  priority?: number;
-
-  http: {
-    method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
-    urlTemplate: string;
-    headers?: Record<string, string>;
-    jsonBodyTemplate?: any;
-    /** If set, we consider the call successful when JSON at this path is truthy (e.g., "ok"). */
-    okField?: string;
-    timeoutMs?: number;
-  };
-
-  /**
-   * Optional declarative UI behavior.
-   * - onSuccess: evaluated when the HTTP call is considered "ok".
-   * - onError: evaluated when "ok" is false.
-   * Values inside `open` support templating with { } / {{ }} using ctx: { args, response, status }.
-   */
-  ui?: {
-    onSuccess?: UIInstructionTemplate;
-    onError?: UIInstructionTemplate;
-  };
-};
 
 /** Local helper: safe nested path read */
 function getByPath(obj: any, path?: string): any {
@@ -74,7 +29,7 @@ function computeOk(
 
 /** Build a client-side executor that calls our server proxy, then optionally shows/hides UI. */
 function buildHttpExecutorViaProxy(
-  descr: HttpDescriptor,
+  descr: HttpToolDescriptor,
   opts?: {
     showOnStage?: (args: any) => void;
     hideStage?: () => void;
@@ -134,15 +89,15 @@ function buildHttpExecutorViaProxy(
       const ctx = { args, response: payload, status };
 
       // Prefer UI instructions from the API; fallback to descriptor-defined
-      const responseUi: UIInstructionTemplate | undefined =
+      const responseUi: UIAction | undefined =
         payload && typeof payload === "object" ? (payload.ui as any) : undefined;
 
       const fallbackUi = ok ? descr.ui?.onSuccess : descr.ui?.onError;
       const ui = responseUi ?? fallbackUi;
 
       // Execute UI instructions
-      if (ui?.open && showOnStage) {
-        const templated = applyTemplate(ui.open, ctx);       
+      if (ui?.emit_show_component && showOnStage) {
+        const templated = applyTemplate(ui.emit_show_component, ctx);       
         try {
           showOnStage(templated);
         } catch (e) {
@@ -151,8 +106,8 @@ function buildHttpExecutorViaProxy(
       }
 
       // When preparing UI open:
-      if (ui?.open && showOnStage) {
-        const openPayload = applyTemplate(ui.open, ctx);
+      if (ui?.emit_show_component && showOnStage) {
+        const openPayload = applyTemplate(ui.emit_show_component, ctx);
         if (hasUnresolvedTokens(openPayload)) {
           console.warn(`[http tool UI:${descr.name}] unresolved tokens in UI payload`, openPayload);
           // You can toast here and skip opening a broken visual
@@ -164,13 +119,13 @@ function buildHttpExecutorViaProxy(
         }
       }
 
-      if (ui?.close && hideStage) {
-        try {
-          hideStage();
-        } catch (e) {
-          console.warn(`[http tool:${descr.name}] hideStage failed:`, (e as any)?.message || e);
-        }
-      }
+      // if (ui?.close && hideStage) {
+      //   try {
+      //     hideStage();
+      //   } catch (e) {
+      //     console.warn(`[http tool:${descr.name}] hideStage failed:`, (e as any)?.message || e);
+      //   }
+      // }
 
      // Toast outcome
       if (ok) {
@@ -216,7 +171,7 @@ function buildHttpExecutorViaProxy(
 /** Convert descriptors => ToolDefs + register handlers */
 export async function registerHttpToolsForTenant(opts: {
   tenantId: string;
-  fetchDescriptors: () => Promise<HttpDescriptor[]>;
+  fetchDescriptors: () => Promise<HttpToolDescriptor[]>;
   registerFunction: (name: string, fn: (args: any) => Promise<any>) => void;
   cap?: number; // keep under model tool limits (e.g., 128)
   showOnStage?: (args: any) => void;

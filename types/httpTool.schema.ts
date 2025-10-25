@@ -55,7 +55,7 @@ const SaySchema = z
 
 /* ---------------- UI action schema (extended) ---------------- */
 
-const UIActionSchema = z
+export const UIActionSchema = z
   .object({   
     /**
      * New: route visuals through `show_component`.
@@ -117,3 +117,4 @@ export const HttpToolDescriptorSchema = z.object({
 
 export const HttpToolDescriptorArraySchema = z.array(HttpToolDescriptorSchema);
 export type HttpToolDescriptor = z.infer<typeof HttpToolDescriptorSchema>;
+export type UIAction = z.infer<typeof UIActionSchema>;
