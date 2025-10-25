@@ -72,3 +72,6 @@ https://github.com/midday-ai/ai-sdk-tools/tree/main/apps/example
 * using resend for email
 https://github.com/resend/resend-nextjs-useactionstate-example
 https://useworkflow.dev/
+
+* essential utilities for using vercel ai sdk
+https://github.com/midday-ai/ai-sdk-tools

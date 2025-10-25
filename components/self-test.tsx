@@ -16,12 +16,15 @@ export interface SelfTestProps {
 
   // optional helpers
   forceToolCall?: (name: string, args: any, sayAfter?: string) => void;
+
+  // NOTE: updated signatures to allow props
   getEventsCount?: () => number;
-  mockShowComponent?: (name: string) => void;
+  mockShowComponent?: (name: string, props?: Record<string, any>) => void;
 
   // ui/config
-  expectedComponent?: string;      // default "menu"
-  autoStart?: boolean;             // default false (no auto-run)
+  expectedComponent?: string;      // default "reservation_checkout"
+  expectedProps?: Record<string, any>; // optional override for mock props
+  autoStart?: boolean;
   className?: string;
   buttonClassName?: string;
   disabledClassName?: string;
@@ -30,6 +33,35 @@ export interface SelfTestProps {
 
 type StepKey = "CONNECT" | "DB" | "TOOL" | "LOGS" | "DONE";
 type StepState = "IDLE" | "RUNNING" | "PASS" | "FAIL";
+
+// Simple mock catalog you can extend for other visuals
+const MOCKS_BY_COMPONENT: Record<string, Record<string, any>> = {
+  reservation_checkout: {
+    tenant_id: "tenant_demo_123",
+    reservation_id: "resv_demo_456",
+    unit_id: "unit_789",
+    unit_name: "The Cypress Suite",
+    check_in: "2025-11-05",
+    check_out: "2025-11-08",
+    nights: 3,
+    nightly_rate: 19900, // cents
+    fees_cents: 4500,
+    taxes_cents: 9200,
+    amount_cents: 19900 * 3 + 4500 + 9200,
+    currency: "USD",
+    guest: {
+      first_name: "Ava",
+      last_name: "Harper",
+      email: "ava.harper@example.com",
+      phone: "+1-512-555-0101",
+    },
+    // drop publishable test key here 
+    // publishableKey: "pk_test_1234567890abcdef",
+    hold_expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+    payment_intent_strategy: "component_fetches",
+    compact: false,
+  },
+};
 
 export default function SelfTest({
   status,
@@ -43,7 +75,8 @@ export default function SelfTest({
   getEventsCount,
   mockShowComponent,
   expectedComponent = "reservation_checkout",
-  autoStart = false, // ← no self-start by default
+  expectedProps, // allow user override
+  autoStart = false,
   className = "",
   buttonClassName = "inline-flex items-center justify-center rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium h-7 px-3",
   disabledClassName = "inline-flex items-center justify-center rounded-md bg-neutral-600 text-white opacity-60 cursor-not-allowed text-xs h-7 px-3",
@@ -87,7 +120,13 @@ export default function SelfTest({
     setStepStatus({ CONNECT: "IDLE", DB: "IDLE", TOOL: "IDLE", LOGS: "IDLE", DONE: "IDLE" });
 
     const baseEvents = getEventsCount?.() ?? 0;
-    const baseConvo  = convoRef.current.length;
+    const baseConvo  = (convoRef.current?.length ?? 0);
+
+    // resolve mock props (user override > catalog > empty)
+    const mockProps =
+      expectedProps ??
+      MOCKS_BY_COMPONENT[expectedComponent] ??
+      {};
 
     let current: StepKey = "CONNECT";
     try {
@@ -139,11 +178,23 @@ export default function SelfTest({
             setStepStatus(s => ({ ...s, TOOL: "RUNNING" }));
             setMsg("3) Tool call…");
 
-            // best-effort force + explicit instruction
-            forceToolCall?.("show_component", { component_name: expectedComponent }, "Tool call complete");
-            await sleep(1000);
+            // Build once; reuse everywhere so all paths are identical.
+            const args = {
+              component_name: expectedComponent,
+              props: { ...mockProps, mock: true }, // ← ensure mock is present
+            };
+
+            // Helpful logs to prove what you’re sending
+            console.log("[SelfTest] show_component args", args);
+
+            // Best-effort direct tool call (if available)
+            forceToolCall?.("show_component", args, "Tool call complete");
+
+            await sleep(800);
+
+            // Natural-language instruction (SAME args — includes mock: true)
             sendText(
-              `Call the tool show_component with {"component_name":"${expectedComponent}"} then reply exactly: Tool call complete`
+              `Call the tool show_component with ${JSON.stringify(args)} then reply exactly: Tool call complete`
             );
 
             let ok = await pollUntil(
@@ -154,8 +205,9 @@ export default function SelfTest({
               150
             );
 
+            // Local fallback renderer (pass the SAME props — includes mock: true)
             if (!ok && mockShowComponent) {
-              mockShowComponent(expectedComponent);
+              mockShowComponent(expectedComponent, args.props);
               sendText("Tool call complete");
               ok = await pollUntil(() => assistantSaid(/tool\s+call\s+complete\b/i), 7000, 150);
             }
@@ -164,11 +216,12 @@ export default function SelfTest({
 
             setStepStatus(s => ({ ...s, TOOL: "PASS" }));
             setMsg("3) Tool call — PASS");
-            await sleep(1000);
+            await sleep(800);
 
             current = "LOGS";
             break;
           }
+
 
           case "LOGS": {
             setStepStatus(s => ({ ...s, LOGS: "RUNNING" }));
@@ -194,7 +247,7 @@ export default function SelfTest({
 
             setStepStatus(s => ({ ...s, LOGS: "PASS" }));
             setMsg("4) Logging — PASS");
-            await sleep(1000);
+            await sleep(800);
 
             current = "DONE";
             break;
@@ -224,7 +277,6 @@ export default function SelfTest({
     }
   };
 
-  // Only auto-start if explicitly requested
   useEffect(() => {
     if (autoStart) run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -232,7 +284,6 @@ export default function SelfTest({
 
   return (
     <div className={className}>
-      {/* Start button (no icon) */}
       <Button
         onClick={run}
         disabled={running}
