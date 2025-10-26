@@ -1,6 +1,20 @@
 // Zod schema for validation (TypeScript/JS via zod)
 import { z } from "zod";
 
+const zDateFlex = z.preprocess(
+  (v) => (typeof v === "string" ? new Date(v) : v),
+  z.date()
+);
+
+const zNumFlex = z.preprocess((v) => {
+  if (typeof v === "number") return v;
+  if (typeof v === "string") return Number(v);
+  if (v && typeof v === "object" && "$numberInt" in (v as any)) {
+    return Number((v as any).$numberInt);
+  }
+  return v;
+}, z.number());
+
 export const ImageSchema = z.object({
   url: z.string().min(1),
   role: z.enum(["hero", "gallery", "floorplan", "amenity", "view"]).default("gallery"),
@@ -134,8 +148,8 @@ export const LuxuryUnitSchema = z.object({
   calendars: z.array(CalendarSchema),
 
   active: z.boolean(),
-  createdAt: z.date(),
-  updatedAt: z.date(),
+  createdAt: zDateFlex,
+  updatedAt: zDateFlex,
   __v: z.number().int().nonnegative(),
   unit_id: z.string().min(1),
   tenantId: z.string().min(1),
@@ -148,7 +162,7 @@ export const LuxuryUnitSchema = z.object({
     maxChildren: z.number().int().nonnegative(),
     extraBedAvailable: z.boolean(),
     cribAvailable: z.boolean(),
-  }),
+  }).optional(),
 
   amenities: AmenitiesSchema,
 
@@ -163,9 +177,9 @@ export const LuxuryUnitSchema = z.object({
       lng: z.number().nullable().default(null),
     }),
     wayfinding: z.array(z.string()).default([]),
-  }),
+  }).optional(),
 
-  images: z.array(ImageSchema),
+  images: z.array(ImageSchema).optional(),
 
   policies: PoliciesSchema,
   tech: TechSchema,
@@ -211,3 +225,6 @@ export const LuxuryUnitSchema = z.object({
 });
 
 export type LuxuryUnit = z.infer<typeof LuxuryUnitSchema>;
+
+// Room.tsx
+export type UnitDoc = LuxuryUnit;

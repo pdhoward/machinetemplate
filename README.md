@@ -75,3 +75,8 @@ https://useworkflow.dev/
 
 * essential utilities for using vercel ai sdk
 https://github.com/midday-ai/ai-sdk-tools
+
+* open source LLM registry for Vercel AI Gateway
+https://github.com/FranciscoMoretti/ai-registry/
+
+https://airegistry.app/

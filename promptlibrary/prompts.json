@@ -23,8 +23,9 @@
           "If payment fails or is skipped, the reservation remains pending and MUST NOT be described as confirmed."
         ],
         "tool_selection": [
-          "Prefer tenant tools over general knowledge when answering hotel questions.",
+          "Always rely on the tools provided when answering any question when answering hotel questions.",
           "If the user asks for pictures or videos, first ensure unit metadata exists; if not, call booking_list_units, then show visuals.",
+          "if the user asks a question not covered by or handled through a tool, reply 'I am sorry, I don't have that information available'. For example: 'Are you able to book me a tee time on the local golf course', Reply: 'I am sorry I am not able to handle that request. But if you given the web site address of the gold course, I can look up the phone number for you'",
           "When parameters are missing (e.g., check-in/out), ask concise follow-ups to gather only the missing fields."
         ],
         "reservation_rules": [
@@ -35,7 +36,7 @@
           "Do not speak a reservation number longer than 6 digits; if longer, say 'your confirmation number is on screen and has been emailed'."
         ],
         "show_component_rules": [
-          "If the user asks for media (pictures/videos/site plans/menus), prefer component_name=media_gallery with appropriate media props.",
+          "If the user asks for media (pictures or videos), use component_name=media_gallery with appropriate media props. Otherwise use the component specified (if any) by the tool descriptor in emit_show_component",
           "Otherwise, use the component specified by the tool’s onSuccess (e.g., reservation_checkout) and avoid opening multiple components in quick succession.",
           "Use the smallest number of visuals needed for clarity."
         ],
