@@ -96,6 +96,11 @@ function buildHttpExecutorViaProxy(
         const fallbackUi = ok ? descr.ui?.onSuccess : descr.ui?.onError;
         const ui = responseUi ?? fallbackUi;
 
+        console.log('[tool]', descr.name, { ok, uiFromResponse: !!responseUi, uiEffective: ui });
+        if (!showOnStage) console.warn('[tool]', descr.name, 'showOnStage is undefined');
+        if (!ui?.emit_show_component) console.warn('[tool]', descr.name, 'no emit_show_component in UI block', ui);
+
+
         // Execute UI instructions (revive JSON-like strings before showing)
         if (ui?.emit_show_component && showOnStage) {
           let openPayload = applyTemplate(ui.emit_show_component, ctx);
@@ -105,13 +110,14 @@ function buildHttpExecutorViaProxy(
 
           if (hasUnresolvedTokens(openPayload)) {
             console.warn(`[http tool UI:${descr.name}] unresolved tokens in UI payload`, openPayload);
-          } else {
-            try {
-              showOnStage(openPayload);
-            } catch (e) {
-              console.warn(`[http tool:${descr.name}] showOnStage failed:`, (e as any)?.message || e);
-            }
+          } 
+
+          try {
+            showOnStage(openPayload);
+          } catch (e) {
+            console.warn(`[http tool:${descr.name}] showOnStage failed:`, (e as any)?.message || e);
           }
+          
         }
 
      

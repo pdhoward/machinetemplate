@@ -73,19 +73,19 @@ const MOCK_LIST_JSON = JSON.stringify(MOCK_LIST_ARRAY);
 
 const MOCK_PAYLOADS = {
   goodArray: {
-    component_name: "room_list",
+    component_name: "room",
     props: { items: MOCK_LIST_ARRAY, dates: { check_in: "2025-11-05", check_out: "2025-11-08" } }
   },
   jsonString: {
-    component_name: "room_list",
+    component_name: "room",
     props: { items: MOCK_LIST_JSON, meta: "{\"count\":2}" }
   },
   badJoin: {
-    component_name: "room_list",
+    component_name: "room",
     props: { items: "[object Object],[object Object]" }
   },
   mixed: {
-    component_name: "room_list",
+    component_name: "room",
     props: {
       title: "Found 2 units",
       extra: ' { "featured": ["u1","u2"] } ',
@@ -93,14 +93,14 @@ const MOCK_PAYLOADS = {
     }
   },
   hugeNonJson: {
-    component_name: "room_list",
+    component_name: "room",
     props: { big: "x".repeat(300_000) }
   },
   deepNest: {
     a: { b: { c: '{"d":[{"e":"ok"}]}' } }
   }
 };
-////////////////////////////////////////////////////////////////////////////////////
+
 
 export default function SelfTest({
   status,
@@ -219,10 +219,10 @@ export default function SelfTest({
             setMsg("3) Testing fetch and data validation");
 
             // Pre-flight type checks (as per example)
-            console.log("---- pre-flight type checks ----");
-            console.log("goodArray.items type:", Array.isArray(MOCK_PAYLOADS.goodArray.props.items) ? "array" : typeof MOCK_PAYLOADS.goodArray.props.items);
-            console.log("jsonString.items type:", typeof MOCK_PAYLOADS.jsonString.props.items);
-            console.log("badJoin.items type:", typeof MOCK_PAYLOADS.badJoin.props.items);
+            // console.log("---- pre-flight type checks ----");
+            // console.log("goodArray.items type:", Array.isArray(MOCK_PAYLOADS.goodArray.props.items) ? "array" : typeof MOCK_PAYLOADS.goodArray.props.items);
+            // console.log("jsonString.items type:", typeof MOCK_PAYLOADS.jsonString.props.items);
+            // console.log("badJoin.items type:", typeof MOCK_PAYLOADS.badJoin.props.items);
 
             // Test each mock payload with revival (use 'as any' to assert runtime types after revival)
             const testResults: Record<string, { passed: boolean; details: string }> = {};
@@ -231,20 +231,20 @@ export default function SelfTest({
             const revivedGood = reviveJsonStringsDeep(MOCK_PAYLOADS.goodArray) as any;
             const goodPassed = Array.isArray(revivedGood.props.items) && revivedGood.props.items.length === 2;
             testResults.goodArray = { passed: goodPassed, details: goodPassed ? "Array intact" : "Failed to preserve array" };
-            console.log("[FETCH] goodArray revived:", revivedGood, "Passed:", goodPassed);
+            //console.log("[FETCH] goodArray revived:", revivedGood, "Passed:", goodPassed);
 
             // jsonString: Should parse string to array
             const revivedJson = reviveJsonStringsDeep(MOCK_PAYLOADS.jsonString) as any;
             const jsonPassed = Array.isArray(revivedJson.props.items) && revivedJson.props.items.length === 2 &&
                                typeof revivedJson.props.meta === "object" && revivedJson.props.meta.count === 2;
             testResults.jsonString = { passed: jsonPassed, details: jsonPassed ? "String parsed to array/object" : "Failed to parse JSON string" };
-            console.log("[FETCH] jsonString revived:", revivedJson, "Passed:", jsonPassed);
+            //console.log("[FETCH] jsonString revived:", revivedJson, "Passed:", jsonPassed);
 
             // badJoin: Should detect unrecoverable and leave as string
             const revivedBad = reviveJsonStringsDeep(MOCK_PAYLOADS.badJoin) as any;
             const badPassed = typeof revivedBad.props.items === "string" && isUnrecoverableObjectJoin(revivedBad.props.items);
             testResults.badJoin = { passed: badPassed, details: badPassed ? "Unrecoverable join detected (left as string)" : "Incorrectly parsed bad join" };
-            console.log("[FETCH] badJoin revived:", revivedBad, "Passed:", badPassed);
+           // console.log("[FETCH] badJoin revived:", revivedBad, "Passed:", badPassed);
 
             // mixed: Should parse jsonish strings in props
             const revivedMixed = reviveJsonStringsDeep(MOCK_PAYLOADS.mixed) as any;
@@ -252,19 +252,19 @@ export default function SelfTest({
                                 Array.isArray(revivedMixed.props.extra.featured) && revivedMixed.props.extra.featured.length === 2 &&
                                 Array.isArray(revivedMixed.props.items) && revivedMixed.props.items.length === 1;
             testResults.mixed = { passed: mixedPassed, details: mixedPassed ? "Mixed strings parsed correctly" : "Failed to parse mixed JSON strings" };
-            console.log("[FETCH] mixed revived:", revivedMixed, "Passed:", mixedPassed);
+           // console.log("[FETCH] mixed revived:", revivedMixed, "Passed:", mixedPassed);
 
             // hugeNonJson: Should skip due to size/non-json
             const revivedHuge = reviveJsonStringsDeep(MOCK_PAYLOADS.hugeNonJson) as any;
             const hugePassed = typeof revivedHuge.props.big === "string" && revivedHuge.props.big.length === 300_000;
             testResults.hugeNonJson = { passed: hugePassed, details: hugePassed ? "Huge non-JSON skipped (left as string)" : "Incorrectly processed huge string" };
-            console.log("[FETCH] hugeNonJson revived:", revivedHuge, "Passed:", hugePassed);
+           // console.log("[FETCH] hugeNonJson revived:", revivedHuge, "Passed:", hugePassed);
 
             // deepNest: Should parse nested JSON string
             const revivedDeep = reviveJsonStringsDeep(MOCK_PAYLOADS.deepNest) as any;
             const deepPassed = Array.isArray(revivedDeep.a.b.c.d) && revivedDeep.a.b.c.d[0].e === "ok";
             testResults.deepNest = { passed: deepPassed, details: deepPassed ? "Deep nested JSON parsed" : "Failed to parse deep nest" };
-            console.log("[FETCH] deepNest revived:", revivedDeep, "Passed:", deepPassed);
+           // console.log("[FETCH] deepNest revived:", revivedDeep, "Passed:", deepPassed);
 
             // Overall pass if all sub-tests pass
             const allPassed = Object.values(testResults).every(r => r.passed);
@@ -275,12 +275,12 @@ export default function SelfTest({
 
             // If passed, "insert check on dashboard" 
             await sleep(250);
-            sendText("Reply exactly: Fetching OK");
+            sendText("Reply exactly: Fetch OK");
             const ok = await pollUntil(() => assistantSaid(/(^|\s)fetch\s+ok(\W|$)/i), 12000, 150);
 
             setStepStatus(s => ({ ...s, FETCH: "PASS" }));
-            setMsg("3) Fetch revival — PASS (all formats handled)");
-            await sleep(800);
+            setMsg("3) Fetch — PASS (all formats handled)");
+            await sleep(300);
 
             current = "TOOL";
             break;
@@ -297,7 +297,7 @@ export default function SelfTest({
             };
 
             // Helpful logs to prove what you’re sending
-            console.log("[SelfTest] show_component args", args);
+            //console.log("[SelfTest] show_component args", args);
 
             // Best-effort direct tool call (if available)
             forceToolCall?.("show_component", args, "Tool call complete");
@@ -408,10 +408,10 @@ export default function SelfTest({
 
       <div className={statusLineClassName}>
         <div>1) Connection — {stepStatus.CONNECT}</div>
-        <div>2) Database — {stepStatus.DB}</div>
-        <div>3) Fetch revival — {stepStatus.FETCH}</div>
+        <div>2) Database ping — {stepStatus.DB}</div>
+        <div>3) Fetch various data types — {stepStatus.FETCH}</div>
         <div>4) Tool call — {stepStatus.TOOL}</div>
-        <div>5) Logging — {stepStatus.LOGS}</div>
+        <div>5) Logging transcripts — {stepStatus.LOGS}</div>
         <div>Result — {stepStatus.DONE === "PASS" ? "PASS ✅" : stepStatus.DONE === "FAIL" ? "FAIL ❌" : "—"}</div>
         {msg ? <div className="mt-1 opacity-80">{msg}</div> : null}
       </div>

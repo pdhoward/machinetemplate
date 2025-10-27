@@ -246,16 +246,33 @@ function resolveExpr(expr: string, ctx: Record<string, any>): any {
  * Supports pipe filters: {{ path | number }}, {{ path | json }}, {{ path | default('USD') | upper }}
  * Also still supports single-brace {path} form (no filters there by design).
  */
-export function tpl(input: string, ctx: Record<string, any>): string {
+// Make tpl return `any` (not string)
+export function tpl(input: string, ctx: Record<string, any>): any {
   if (typeof input !== "string") return input as any;
 
-  // Double-brace (with filters)
+  const isWholeDouble = /^\s*\{\{\s*[^{}]+\s*\}\}\s*$/.test(input);
+  const isWholeSingle = /^\s*\{\s*[^{}]+\s*\}\s*$/.test(input);
+
+  if (isWholeDouble) {
+    // strip {{ }}
+    const expr = input.replace(/^\s*\{\{\s*|\s*\}\}\s*$/g, "");
+    // resolve with filters and return RAW value
+    return resolveExpr(expr, ctx);
+  }
+
+  if (isWholeSingle) {
+    // strip { }
+    const path = input.replace(/^\s*\{\s*|\s*\}\s*$/g, "");
+    // return RAW value
+    return getByPath(ctx, path);
+  }
+
+  // Mixed-content template → do legacy replace and coerce to string
   let out = input.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_m, expr) => {
     const v = resolveExpr(String(expr).trim(), ctx);
     return v == null ? "" : String(v);
   });
 
-  // Single-brace (no filters; kept for backward compatibility)
   out = out.replace(/\{([^}]+?)\}/g, (_m, p1) => {
     const v = getByPath(ctx, String(p1).trim());
     return v == null ? "" : String(v);
@@ -264,11 +281,14 @@ export function tpl(input: string, ctx: Record<string, any>): string {
   return out;
 }
 
-/** True if any unresolved {{...}} or {...} tokens remain in a JSON-like structure */
+
+/** True if any unresolved {{...}} remain in a JSON-like structure */
 export function hasUnresolvedTokens(value: any): boolean {
   const s = typeof value === "string" ? value : JSON.stringify(value ?? "");
-  return /\{\{[^}]+\}\}|\{[^}]+\}/.test(s);
+  // Only detect mustache tokens; do not test for single-brace pattern that collides with JSON
+  return /\{\{\s*[^{}]+\s*\}\}/.test(s); 
 }
+
 
 /**
  * applyTemplate(value, ctx)

@@ -2,11 +2,11 @@
 
 import * as React from "react";
 import Image from "next/image";
+import DisplayComponent from "@/components/modals/DisplayComponent"
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Image as ImageIcon, Ruler, BedDouble, Bath, Wifi, Eye } from "lucide-react";
 import type { UnitDoc } from "@/types/units.schema";
 import RoomGallery from "./RoomGallery";
@@ -49,11 +49,15 @@ export default function RoomList({ items, dates, highlight }: Props) {
         ))}
       </div>
 
-      <Dialog open={open} onOpenChange={(v) => { if (!v) setSelected(null); setOpen(v); }}>
-        <DialogContent className="p-0 sm:max-w-4xl overflow-hidden">
-          {selected && <RoomGallery unit={selected} dates={dates} />}
-        </DialogContent>
-      </Dialog>
+       <DisplayComponent
+          open={open}
+          onClose={() => { setOpen(false); setSelected(null); }}
+          title="Room details"
+          size="xl"
+          className="overflow-hidden" 
+      >
+        {selected && <RoomGallery unit={selected} dates={dates} />}
+      </DisplayComponent>
     </>
   );
 }
@@ -103,7 +107,7 @@ function UnitCard({
               fill
               className="object-cover"
               sizes="(max-width: 768px) 100vw, 33vw"
-              onLoadingComplete={() => setImgLoaded(true)}
+              onLoad={() => setImgLoaded(true)}
             />
           </motion.div>
         </div>

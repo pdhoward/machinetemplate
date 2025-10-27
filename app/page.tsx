@@ -63,8 +63,8 @@ const App: React.FC = () => {
   }, []);
 
   const hideStage = useCallback(() => {
-  stageRef.current?.hide?.();
-}, []);
+    stageRef.current?.hide?.();
+  }, []);
 
   const {
     status, 
