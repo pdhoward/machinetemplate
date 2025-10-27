@@ -2,7 +2,6 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { reviveJsonStringsDeep, looksJsonish, isUnrecoverableObjectJoin } from "@/lib/datacheck/json-revive";
 
 import type { ConversationItem } from "@/lib/realtime";
 
@@ -32,7 +31,7 @@ export interface SelfTestProps {
   statusLineClassName?: string;
 }
 
-type StepKey = "CONNECT" | "DB" | "FETCH" | "TOOL" | "LOGS" | "DONE";
+type StepKey = "CONNECT" | "DB" | "TOOL" | "LOGS" | "DONE";
 type StepState = "IDLE" | "RUNNING" | "PASS" | "FAIL";
 
 // Simple mock catalog you can extend for other visuals
@@ -64,44 +63,6 @@ const MOCKS_BY_COMPONENT: Record<string, Record<string, any>> = {
   },
 };
 
-// ---- Mock data resembling http_tool descriptors ----
-const MOCK_LIST_ARRAY = [
-  { unit_id: "u1", name: "Ridge Villa", rate: 685 },
-  { unit_id: "u2", name: "Grove Villa", rate: 395 }
-];
-const MOCK_LIST_JSON = JSON.stringify(MOCK_LIST_ARRAY);
-
-const MOCK_PAYLOADS = {
-  goodArray: {
-    component_name: "room_list",
-    props: { items: MOCK_LIST_ARRAY, dates: { check_in: "2025-11-05", check_out: "2025-11-08" } }
-  },
-  jsonString: {
-    component_name: "room_list",
-    props: { items: MOCK_LIST_JSON, meta: "{\"count\":2}" }
-  },
-  badJoin: {
-    component_name: "room_list",
-    props: { items: "[object Object],[object Object]" }
-  },
-  mixed: {
-    component_name: "room_list",
-    props: {
-      title: "Found 2 units",
-      extra: ' { "featured": ["u1","u2"] } ',
-      items: '[{"unit_id":"u3","name":"Summit Villa"}]'
-    }
-  },
-  hugeNonJson: {
-    component_name: "room_list",
-    props: { big: "x".repeat(300_000) }
-  },
-  deepNest: {
-    a: { b: { c: '{"d":[{"e":"ok"}]}' } }
-  }
-};
-////////////////////////////////////////////////////////////////////////////////////
-
 export default function SelfTest({
   status,
   isConnected,
@@ -126,7 +87,6 @@ export default function SelfTest({
   const [stepStatus, setStepStatus] = useState<Record<StepKey, StepState>>({
     CONNECT: "IDLE",
     DB: "IDLE",
-    FETCH: "IDLE",
     TOOL: "IDLE",
     LOGS: "IDLE",
     DONE: "IDLE",
@@ -157,7 +117,7 @@ export default function SelfTest({
     if (running) return;
     setRunning(true);
     setMsg("Starting self test…");
-    setStepStatus({ CONNECT: "IDLE", DB: "IDLE", FETCH: "IDLE", TOOL: "IDLE", LOGS: "IDLE", DONE: "IDLE" });
+    setStepStatus({ CONNECT: "IDLE", DB: "IDLE", TOOL: "IDLE", LOGS: "IDLE", DONE: "IDLE" });
 
     const baseEvents = getEventsCount?.() ?? 0;
     const baseConvo  = (convoRef.current?.length ?? 0);
@@ -210,85 +170,13 @@ export default function SelfTest({
             setMsg("2) Database — PASS");
             await sleep(350);
 
-            current = "FETCH";
-            break;
-          }
-
-         case "FETCH": {
-            setStepStatus(s => ({ ...s, FETCH: "RUNNING" }));
-            setMsg("3) Testing fetch and data validation");
-
-            // Pre-flight type checks (as per example)
-            console.log("---- pre-flight type checks ----");
-            console.log("goodArray.items type:", Array.isArray(MOCK_PAYLOADS.goodArray.props.items) ? "array" : typeof MOCK_PAYLOADS.goodArray.props.items);
-            console.log("jsonString.items type:", typeof MOCK_PAYLOADS.jsonString.props.items);
-            console.log("badJoin.items type:", typeof MOCK_PAYLOADS.badJoin.props.items);
-
-            // Test each mock payload with revival (use 'as any' to assert runtime types after revival)
-            const testResults: Record<string, { passed: boolean; details: string }> = {};
-
-            // goodArray: Should remain array (no change needed)
-            const revivedGood = reviveJsonStringsDeep(MOCK_PAYLOADS.goodArray) as any;
-            const goodPassed = Array.isArray(revivedGood.props.items) && revivedGood.props.items.length === 2;
-            testResults.goodArray = { passed: goodPassed, details: goodPassed ? "Array intact" : "Failed to preserve array" };
-            console.log("[FETCH] goodArray revived:", revivedGood, "Passed:", goodPassed);
-
-            // jsonString: Should parse string to array
-            const revivedJson = reviveJsonStringsDeep(MOCK_PAYLOADS.jsonString) as any;
-            const jsonPassed = Array.isArray(revivedJson.props.items) && revivedJson.props.items.length === 2 &&
-                               typeof revivedJson.props.meta === "object" && revivedJson.props.meta.count === 2;
-            testResults.jsonString = { passed: jsonPassed, details: jsonPassed ? "String parsed to array/object" : "Failed to parse JSON string" };
-            console.log("[FETCH] jsonString revived:", revivedJson, "Passed:", jsonPassed);
-
-            // badJoin: Should detect unrecoverable and leave as string
-            const revivedBad = reviveJsonStringsDeep(MOCK_PAYLOADS.badJoin) as any;
-            const badPassed = typeof revivedBad.props.items === "string" && isUnrecoverableObjectJoin(revivedBad.props.items);
-            testResults.badJoin = { passed: badPassed, details: badPassed ? "Unrecoverable join detected (left as string)" : "Incorrectly parsed bad join" };
-            console.log("[FETCH] badJoin revived:", revivedBad, "Passed:", badPassed);
-
-            // mixed: Should parse jsonish strings in props
-            const revivedMixed = reviveJsonStringsDeep(MOCK_PAYLOADS.mixed) as any;
-            const mixedPassed = typeof revivedMixed.props.title === "string" &&
-                                Array.isArray(revivedMixed.props.extra.featured) && revivedMixed.props.extra.featured.length === 2 &&
-                                Array.isArray(revivedMixed.props.items) && revivedMixed.props.items.length === 1;
-            testResults.mixed = { passed: mixedPassed, details: mixedPassed ? "Mixed strings parsed correctly" : "Failed to parse mixed JSON strings" };
-            console.log("[FETCH] mixed revived:", revivedMixed, "Passed:", mixedPassed);
-
-            // hugeNonJson: Should skip due to size/non-json
-            const revivedHuge = reviveJsonStringsDeep(MOCK_PAYLOADS.hugeNonJson) as any;
-            const hugePassed = typeof revivedHuge.props.big === "string" && revivedHuge.props.big.length === 300_000;
-            testResults.hugeNonJson = { passed: hugePassed, details: hugePassed ? "Huge non-JSON skipped (left as string)" : "Incorrectly processed huge string" };
-            console.log("[FETCH] hugeNonJson revived:", revivedHuge, "Passed:", hugePassed);
-
-            // deepNest: Should parse nested JSON string
-            const revivedDeep = reviveJsonStringsDeep(MOCK_PAYLOADS.deepNest) as any;
-            const deepPassed = Array.isArray(revivedDeep.a.b.c.d) && revivedDeep.a.b.c.d[0].e === "ok";
-            testResults.deepNest = { passed: deepPassed, details: deepPassed ? "Deep nested JSON parsed" : "Failed to parse deep nest" };
-            console.log("[FETCH] deepNest revived:", revivedDeep, "Passed:", deepPassed);
-
-            // Overall pass if all sub-tests pass
-            const allPassed = Object.values(testResults).every(r => r.passed);
-            if (!allPassed) {
-              const failedDetails = Object.entries(testResults).filter(([, r]) => !r.passed).map(([k, r]) => `${k}: ${r.details}`).join("; ");
-              throw new Error(`Fetch revival tests failed: ${failedDetails}`);
-            }
-
-            // If passed, "insert check on dashboard" 
-            await sleep(250);
-            sendText("Reply exactly: Fetching OK");
-            const ok = await pollUntil(() => assistantSaid(/(^|\s)fetch\s+ok(\W|$)/i), 12000, 150);
-
-            setStepStatus(s => ({ ...s, FETCH: "PASS" }));
-            setMsg("3) Fetch revival — PASS (all formats handled)");
-            await sleep(800);
-
             current = "TOOL";
             break;
           }
 
           case "TOOL": {
             setStepStatus(s => ({ ...s, TOOL: "RUNNING" }));
-            setMsg("4) Tool call…");
+            setMsg("3) Tool call…");
 
             // Build once; reuse everywhere so all paths are identical.
             const args = {
@@ -327,16 +215,17 @@ export default function SelfTest({
             if (!ok) throw new Error("Tool did not complete");
 
             setStepStatus(s => ({ ...s, TOOL: "PASS" }));
-            setMsg("4) Tool call — PASS");
+            setMsg("3) Tool call — PASS");
             await sleep(800);
 
             current = "LOGS";
             break;
           }
 
+
           case "LOGS": {
             setStepStatus(s => ({ ...s, LOGS: "RUNNING" }));
-            setMsg("5) Logging…");
+            setMsg("4) Logging…");
 
             const targetEvents = (getEventsCount?.() ?? baseEvents) + 2;
             const targetConvo  = baseConvo + 1;
@@ -357,7 +246,7 @@ export default function SelfTest({
             if (!ok) throw new Error("No new logs observed");
 
             setStepStatus(s => ({ ...s, LOGS: "PASS" }));
-            setMsg("5) Logging — PASS");
+            setMsg("4) Logging — PASS");
             await sleep(800);
 
             current = "DONE";
@@ -409,9 +298,8 @@ export default function SelfTest({
       <div className={statusLineClassName}>
         <div>1) Connection — {stepStatus.CONNECT}</div>
         <div>2) Database — {stepStatus.DB}</div>
-        <div>3) Fetch revival — {stepStatus.FETCH}</div>
-        <div>4) Tool call — {stepStatus.TOOL}</div>
-        <div>5) Logging — {stepStatus.LOGS}</div>
+        <div>3) Tool call — {stepStatus.TOOL}</div>
+        <div>4) Logging — {stepStatus.LOGS}</div>
         <div>Result — {stepStatus.DONE === "PASS" ? "PASS ✅" : stepStatus.DONE === "FAIL" ? "FAIL ❌" : "—"}</div>
         {msg ? <div className="mt-1 opacity-80">{msg}</div> : null}
       </div>

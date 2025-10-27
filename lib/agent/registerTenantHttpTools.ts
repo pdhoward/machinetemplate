@@ -1,6 +1,7 @@
 
 import type { ToolDef } from "@/types/tools";
 import { applyTemplate, hasUnresolvedTokens } from "@/lib/utils";
+import { reviveJsonStringsDeep } from "@/lib/datacheck/json-revive";
 import { toast } from "sonner";
 import type { HttpToolDescriptor, UIAction } from "@/types/httpTool.schema";
 
@@ -86,47 +87,34 @@ function buildHttpExecutorViaProxy(
       ok = computeOk(status, payload, descr.http.okField);
 
       // Build a templating context for UI
-      const ctx = { args, response: payload, status };
+        const ctx = { args, response: payload, status };
 
-      // Prefer UI instructions from the API; fallback to descriptor-defined
-      const responseUi: UIAction | undefined =
-        payload && typeof payload === "object" ? (payload.ui as any) : undefined;
+        // Prefer UI instructions from the API; fallback to descriptor-defined
+        const responseUi: UIAction | undefined =
+          payload && typeof payload === "object" ? (payload.ui as any) : undefined;
 
-      const fallbackUi = ok ? descr.ui?.onSuccess : descr.ui?.onError;
-      const ui = responseUi ?? fallbackUi;
+        const fallbackUi = ok ? descr.ui?.onSuccess : descr.ui?.onError;
+        const ui = responseUi ?? fallbackUi;
 
-      // Execute UI instructions
-      if (ui?.emit_show_component && showOnStage) {
-        const templated = applyTemplate(ui.emit_show_component, ctx);       
-        try {
-          showOnStage(templated);
-        } catch (e) {
-          console.warn(`[http tool:${descr.name}] showOnStage failed:`, (e as any)?.message || e);
+        // Execute UI instructions (revive JSON-like strings before showing)
+        if (ui?.emit_show_component && showOnStage) {
+          let openPayload = applyTemplate(ui.emit_show_component, ctx);
+
+          // ⬇️ First gate revive: convert any JSON-looking strings into objects/arrays
+          openPayload = reviveJsonStringsDeep(openPayload);
+
+          if (hasUnresolvedTokens(openPayload)) {
+            console.warn(`[http tool UI:${descr.name}] unresolved tokens in UI payload`, openPayload);
+          } else {
+            try {
+              showOnStage(openPayload);
+            } catch (e) {
+              console.warn(`[http tool:${descr.name}] showOnStage failed:`, (e as any)?.message || e);
+            }
+          }
         }
-      }
 
-      // When preparing UI open:
-      if (ui?.emit_show_component && showOnStage) {
-        const openPayload = applyTemplate(ui.emit_show_component, ctx);
-        if (hasUnresolvedTokens(openPayload)) {
-          console.warn(`[http tool UI:${descr.name}] unresolved tokens in UI payload`, openPayload);
-          // You can toast here and skip opening a broken visual
-        }
-       try {
-          showOnStage(openPayload);
-        } catch (e) {
-          throw new Error(`[http tool:${descr.name}] showOnStage failed:`, (e as any)?.message || e);
-        }
-      }
-
-      // if (ui?.close && hideStage) {
-      //   try {
-      //     hideStage();
-      //   } catch (e) {
-      //     console.warn(`[http tool:${descr.name}] hideStage failed:`, (e as any)?.message || e);
-      //   }
-      // }
-
+     
      // Toast outcome
       if (ok) {
         const successMsg =

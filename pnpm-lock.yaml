@@ -206,6 +206,9 @@ importers:
       remark-gfm:
         specifier: ^4.0.1
         version: 4.0.1
+      secure-json-parse:
+        specifier: ^4.1.0
+        version: 4.1.0
       sonner:
         specifier: ^1.7.1
         version: 1.7.4(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
@@ -3735,6 +3738,9 @@ packages:
 
   scheduler@0.26.0:
     resolution: {integrity: sha512-NlHwttCI/l5gCPR3D1nNXtWABUmBwvZpEQiD4IXSbIDq8BzLIK/7Ir5gTFSGZDUu37K5cMNp0hFtzO38sC7gWA==}
+
+  secure-json-parse@4.1.0:
+    resolution: {integrity: sha512-l4KnYfEyqYJxDwlNVyRfO2E4NTHfMKAWdUuA8J0yve2Dz/E/PdBepY03RvyJpssIpRFwJoCD55wA+mEDs6ByWA==}
 
   semver@6.3.1:
     resolution: {integrity: sha512-BR7VvDCVHO+q2xBEWskxS6DJE1qRnb7DxzUrogb71CWoSficBxYsiAGd+Kl0mmq/MprG9yArRkyrQxTO6XjMzA==}
@@ -8553,6 +8559,8 @@ snapshots:
       is-regex: 1.2.1
 
   scheduler@0.26.0: {}
+
+  secure-json-parse@4.1.0: {}
 
   semver@6.3.1: {}
 
