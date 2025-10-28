@@ -2,116 +2,108 @@
 
 import * as React from "react";
 import { createPortal } from "react-dom";
-import { X } from "lucide-react";
+import { cn } from "@/lib/utils";
 
-type ModalProps = {
+type DisplayProps = {
   open: boolean;
-  onClose: () => void;
-  children: React.ReactNode;
-  title?: string;                 // used for a11y
+  onClose?: () => void;
+  title?: string;
   size?: "sm" | "md" | "lg" | "xl";
-  className?: string;             // extra classes for content
-  closeOnBackdrop?: boolean;      // default true
-  showCloseButton?: boolean;      // default true
+  className?: string;
+  children?: React.ReactNode;
 };
 
-function cx(...a: Array<string | false | null | undefined>) {
-  return a.filter(Boolean).join(" ");
-}
+const sizeMap: Record<NonNullable<DisplayProps["size"]>, string> = {
+  sm: "max-w-sm",
+  md: "max-w-md",
+  lg: "max-w-2xl",
+  xl: "max-w-4xl",
+};
 
-// Lock <body> scroll when open
-function useLockBodyScroll(lock: boolean) {
-  React.useEffect(() => {
-    if (!lock) return;
-    const { overflow } = document.body.style;
-    document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = overflow; };
-  }, [lock]);
-}
-
-export default function Modal({
+export default function DisplayComponent({
   open,
   onClose,
-  children,
-  title = "Dialog",
-  size = "xl",
+  title,
+  size = "md",
   className,
-  closeOnBackdrop = true,
-  showCloseButton = true,
-}: ModalProps) {
+  children,
+}: DisplayProps) {
   const [mounted, setMounted] = React.useState(false);
-  const contentRef = React.useRef<HTMLDivElement>(null);
-  const titleId = React.useId();
 
-  useLockBodyScroll(open);
-
-  // Mount portal only on client
-  React.useEffect(() => setMounted(true), []);
-
-  // Close on ESC
   React.useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+    setMounted(true);
+  }, []);
 
-  // Focus the dialog on open (simple focus management)
-  React.useEffect(() => {
-    if (open) contentRef.current?.focus();
-  }, [open]);
+  // Close on ESC, but don't bubble to global handlers
+  const onKeyDownCapture = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") {
+      e.stopPropagation();
+      e.preventDefault();
+      onClose?.();
+    }
+  };
 
-  if (!mounted || !open) return null;
-
-  const maxW =
-    size === "sm" ? "sm:max-w-sm" :
-    size === "md" ? "sm:max-w-md" :
-    size === "lg" ? "sm:max-w-lg" :
-    "sm:max-w-4xl"; // xl (default)
+  if (!open || !mounted) return null;
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[120]"
-      aria-hidden={!open}
+      role="dialog"
+      aria-modal="true"
+      className="fixed inset-0 z-[120] flex items-center justify-center"
+      // prevent any bubbling to page/global listeners
+      onKeyDownCapture={onKeyDownCapture}
+      onClickCapture={(e) => e.stopPropagation()}
+      onMouseDownCapture={(e) => e.stopPropagation()}
+      onTouchStartCapture={(e) => e.stopPropagation()}
     >
-      {/* Backdrop */}
+      {/* Overlay — DO NOT close on overlay click; we swallow events */}
       <div
-        className="fixed inset-0 z-[110] bg-black/80"
-        onClick={closeOnBackdrop ? onClose : undefined}
+        className="absolute inset-0 bg-black/70 backdrop-blur-[1px]"
+        aria-hidden="true"
+        onClick={(e) => {
+          // explicit close only; ignore overlay clicks
+          e.stopPropagation();
+        }}
+        onMouseDown={(e) => e.stopPropagation()}
       />
+
       {/* Content */}
       <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        tabIndex={-1}
-        ref={contentRef}
-        className={cx(
-          "fixed left-1/2 top-1/2 z-[120] w-full -translate-x-1/2 -translate-y-1/2",
-          "bg-background text-foreground shadow-xl sm:rounded-xl outline-none",
-          "p-0",            // keep zero padding so embedded components (like galleries) control their own layout
-          maxW,
-          className
+        className={cn(
+          "relative z-[121] w-[94vw] sm:w-auto border border-neutral-800 bg-neutral-950 text-white shadow-2xl rounded-xl",
         )}
-        onClick={(e) => e.stopPropagation()} // prevent backdrop close on inner clicks
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
       >
-        {/* Visually hidden title for a11y; replace with visible header if you prefer */}
-        <h2 id={titleId} className="sr-only">{title}</h2>
-
-        {showCloseButton && (
+        {/* Header */}
+        <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-neutral-800">
+          <div className="text-sm font-semibold truncate">{title}</div>
           <button
-            onClick={onClose}
-            className="absolute right-3 top-3 inline-flex h-8 w-8 items-center justify-center rounded-md
-                       bg-black/30 text-white/90 hover:bg-black/40 focus:outline-none focus:ring-2 focus:ring-white/60"
             aria-label="Close"
+            title="Close"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-red-500/40
+                       text-red-400 hover:bg-red-500/10 focus:outline-none focus:ring-2 focus:ring-red-500/50"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onClose?.();
+            }}
           >
-            <X className="h-4 w-4" />
+            ×
           </button>
-        )}
+        </div>
 
-        {children}
+        {/* Body */}
+        <div
+          className={cn(
+            "p-4",
+            sizeMap[size],
+            "max-h-[85vh] overflow-y-auto",
+            className
+          )}
+        >
+          {children}
+        </div>
       </div>
     </div>,
     document.body

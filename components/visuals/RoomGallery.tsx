@@ -1,17 +1,13 @@
 "use client";
 
 import * as React from "react";
-import Image from "next/image";
-import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Ruler, BedDouble, Bath, Users, Wifi, MapPin, Image as ImageIcon, Play } from "lucide-react";
+import { Ruler, BedDouble, Bath, Users, Wifi, MapPin, Accessibility, Tv } from "lucide-react";
 import type { UnitDoc } from "@/types/units.schema";
 
-/* ------------------------------ helpers ------------------------------ */
-
-const isVideoUrl = (url: string) => /\.(mp4|webm|mov)(\?.*)?$/i.test(url);
+/* ───────────────── helpers ───────────────── */
 
 function formatCurrency(amount?: number, currency = "USD") {
   if (typeof amount !== "number") return undefined;
@@ -22,195 +18,211 @@ function formatCurrency(amount?: number, currency = "USD") {
   }
 }
 
-function Fact({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string }) {
+function Row({
+  label,
+  value,
+}: {
+  label: React.ReactNode;
+  value?: React.ReactNode;
+}) {
+  if (value == null || value === "" || (Array.isArray(value) && value.length === 0)) return null;
   return (
-    <div className="rounded-xl border border-neutral-800 bg-neutral-950/40 p-3">
-      <div className="flex items-center gap-2 text-neutral-300 text-sm">
-        <Icon className="h-4 w-4" />
-        <span className="text-neutral-400">{label}</span>
-      </div>
-      <div className="mt-1 font-medium text-neutral-100 text-sm">{value}</div>
+    <div className="flex items-start justify-between gap-3 py-1.5">
+      <div className="text-[13px] text-neutral-400">{label}</div>
+      <div className="text-sm text-neutral-100 text-right">{value}</div>
     </div>
   );
 }
 
-function pickHeroMedia(images?: { url: string; role?: string; alt?: string; order?: number }[]) {
-  if (!images?.length) return undefined;
-  // Prefer non-video with role hero/gallery by order; fallback to any non-video; then any.
-  const sorted = [...images].sort((a, b) => (a.order ?? 1) - (b.order ?? 1));
+function Chips({ items }: { items?: string[] }) {
+  if (!items?.length) return null;
   return (
-    sorted.find((m) => !isVideoUrl(m.url) && (m.role === "hero" || m.role === "gallery")) ||
-    sorted.find((m) => !isVideoUrl(m.url)) ||
-    sorted[0]
+    <div className="flex flex-wrap justify-end gap-1.5">
+      {items.map((t) => (
+        <Badge key={t} variant="secondary" className="bg-neutral-800 text-neutral-200 text-[11px]">
+          {t}
+        </Badge>
+      ))}
+    </div>
   );
 }
 
-/* ------------------------------ component ------------------------------ */
+/* ───────────────── component ───────────────── */
 
 export default function RoomGallery({
   unit,
   dates,
+  onClose, // optional: allow close from inside the modal
 }: {
   unit: UnitDoc;
   dates?: { check_in?: string; check_out?: string };
+  onClose?: () => void;
 }) {
-  const images = (unit.images ?? []).filter(Boolean);
-  const [heroIdx, setHeroIdx] = React.useState(() => {
-    const hero = pickHeroMedia(images);
-    return Math.max(0, images.findIndex((m) => m === hero));
-  });
-
-  React.useEffect(() => {
-    // keep idx in range if images change
-    if (heroIdx > images.length - 1) setHeroIdx(0);
-  }, [heroIdx, images.length]);
-
-  const hero = images[heroIdx];
-
   const price = formatCurrency(unit.rate, unit.currency || "USD");
   const sqft = unit.config?.squareFeet;
   const beds = unit.config?.beds?.map((b) => `${b.count} ${b.size}`).join(", ");
   const baths = unit.config?.bathrooms;
   const sleeps = unit.occupancy?.sleeps;
-  const hasWifi = unit.tech?.wifi?.available === true;
   const view = unit.config?.view || unit.amenities?.view?.[0];
+
+  const amen = unit.amenities ?? {};
+  const policies = unit.policies ?? {};
+
+  const locCity = unit.location?.city;
+  const locState = unit.location?.state;
+
+  const titleLine = (
+    <>
+      {unit.name}
+      {unit.unitNumber && <span className="text-neutral-400 font-normal"> · #{unit.unitNumber}</span>}
+    </>
+  );
 
   return (
     <Card className="bg-neutral-950 border-neutral-800 w-full">
       <CardHeader className="px-4 py-3">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <CardTitle className="text-lg sm:text-xl leading-tight">
-              {unit.name} {unit.unitNumber && <span className="text-neutral-400 font-normal">· #{unit.unitNumber}</span>}
-            </CardTitle>
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <CardTitle className="text-base sm:text-lg leading-tight truncate">{titleLine}</CardTitle>
             <CardDescription className="text-xs sm:text-sm text-neutral-400">
-              {unit.type?.[0]?.toUpperCase() + unit.type?.slice(1) || "Villa"}
+              {(unit.type?.[0]?.toUpperCase() + unit.type?.slice(1)) || "Villa"}
               {view ? ` · ${String(view).toLowerCase()} view` : ""}
-              {unit.location?.city ? ` · ${unit.location.city}, ${unit.location.state ?? ""}` : ""}
+              {locCity ? ` · ${locCity}${locState ? `, ${locState}` : ""}` : ""}
             </CardDescription>
           </div>
-          {price && (
-            <div className="text-right">
-              <div className="text-xl sm:text-2xl font-semibold">{price}</div>
-              <div className="text-neutral-400 text-xs">per night</div>
-            </div>
-          )}
+
+          {/* Removed redundant close button; use the one from DisplayComponent */}
         </div>
       </CardHeader>
 
       <CardContent className="px-4 pb-4 space-y-4">
-        {/* --- Compact hero (4/3), handles image OR video --- */}
-        {hero ? (
-          <div className="relative aspect-[4/3] w-full overflow-hidden rounded-xl border border-neutral-800">
-            {isVideoUrl(hero.url) ? (
-              <video
-                className="absolute inset-0 h-full w-full object-cover"
-                controls
-                preload="metadata"
-                poster={images.find((m) => !isVideoUrl(m.url))?.url /* use first image as poster if available */}
-              >
-                <source src={hero.url} />
-              </video>
-            ) : (
-              <motion.div
-                initial={{ opacity: 0.4, scale: 1.01 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.35, ease: "easeOut" }}
-                className="absolute inset-0"
-              >
-                <Image
-                  src={hero.url}
-                  alt={hero.alt || unit.name}
-                  fill
-                  className="object-cover"
-                  sizes="(max-width: 768px) 100vw, 800px"
-                  onLoad={() => {/* smooth-in handled by motion */}}
-                />
-              </motion.div>
-            )}
-            {/* Small corner indicator if hero is a video */}
-            {isVideoUrl(hero.url) && (
-              <div className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-md bg-black/60 px-2 py-1 text-xs text-white">
-                <Play className="h-3.5 w-3.5" /> Video
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="relative aspect-[4/3] w-full overflow-hidden rounded-xl bg-neutral-900">
-            <div className="absolute inset-0 bg-gradient-to-br from-neutral-900 via-neutral-900 to-neutral-800" />
-            <div className="relative h-full w-full flex items-center justify-center">
-              <div className="flex items-center gap-2 text-neutral-500">
-                <ImageIcon className="h-5 w-5" />
-                <span className="text-sm">No media available</span>
+        {/* Price + quick facts */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {price && (
+            <div className="rounded-xl border border-neutral-800 bg-neutral-950/40 p-3">
+              <div className="text-[13px] text-neutral-400">Rate</div>
+              <div className="mt-1 font-semibold text-neutral-100">
+                {price}
+                <span className="text-xs text-neutral-400"> / night</span>
               </div>
             </div>
-          </div>
-        )}
-
-        {/* --- Thumbnails (small) --- */}
-        {images.length > 1 && (
-          <div className="flex gap-2 overflow-x-auto pt-1">
-            {images.map((m, i) => (
-              <button
-                key={`${m.url}-${i}`}
-                onClick={() => setHeroIdx(i)}
-                className={`relative h-16 w-24 shrink-0 overflow-hidden rounded-md border ${
-                  i === heroIdx ? "border-amber-400/70" : "border-neutral-800"
-                }`}
-                aria-label={`Thumbnail ${i + 1}`}
-                title={m.alt || unit.name}
-              >
-                {isVideoUrl(m.url) ? (
-                  <div className="absolute inset-0 grid place-items-center bg-neutral-900">
-                    <Play className="h-5 w-5 text-neutral-200" />
-                  </div>
-                ) : (
-                  <Image src={m.url} alt={m.alt || unit.name} fill className="object-cover" sizes="96px" />
-                )}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* --- Details-first content --- */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {typeof sqft === "number" && <Fact icon={Ruler} label="Square feet" value={`${sqft.toLocaleString()}`} />}
-          {beds && <Fact icon={BedDouble} label="Beds" value={beds} />}
-          {typeof baths === "number" && <Fact icon={Bath} label="Bathrooms" value={`${baths}`} />}
-          {typeof sleeps === "number" && <Fact icon={Users} label="Sleeps" value={`${sleeps}`} />}
-          {hasWifi && <Fact icon={Wifi} label="Wi-Fi" value="Included" />}
+          )}
+          {typeof sqft === "number" && (
+            <div className="rounded-xl border border-neutral-800 bg-neutral-950/40 p-3">
+              <div className="flex items-center gap-2 text-[13px] text-neutral-400">
+                <Ruler className="h-4 w-4" /> Size
+              </div>
+              <div className="mt-1 font-medium text-neutral-100">{sqft.toLocaleString()} ft²</div>
+            </div>
+          )}
+          {beds && (
+            <div className="rounded-xl border border-neutral-800 bg-neutral-950/40 p-3">
+              <div className="flex items-center gap-2 text-[13px] text-neutral-400">
+                <BedDouble className="h-4 w-4" /> Beds
+              </div>
+              <div className="mt-1 font-medium text-neutral-100">{beds}</div>
+            </div>
+          )}
+          {typeof sleeps === "number" && (
+            <div className="rounded-xl border border-neutral-800 bg-neutral-950/40 p-3">
+              <div className="flex items-center gap-2 text-[13px] text-neutral-400">
+                <Users className="h-4 w-4" /> Sleeps
+              </div>
+              <div className="mt-1 font-medium text-neutral-100">{sleeps}</div>
+            </div>
+          )}
         </div>
 
+        {/* Description */}
         {unit.description && <p className="text-sm text-neutral-300 leading-relaxed">{unit.description}</p>}
 
         <Separator className="bg-neutral-800" />
 
-        <div className="flex flex-wrap gap-2">
-          {(unit.amenities?.wellness ?? []).slice(0, 3).map((w) => (
-            <Badge key={w} variant="secondary" className="bg-neutral-800 text-neutral-200">
-              {w}
-            </Badge>
-          ))}
-          {unit.config?.view && (
-            <Badge variant="secondary" className="bg-neutral-800 text-neutral-200">
-              View · {String(unit.config.view)}
-            </Badge>
-          )}
-          {(unit.amenities?.outdoor ?? []).slice(0, 2).map((o) => (
-            <Badge key={o} variant="secondary" className="bg-neutral-800 text-neutral-200">
-              {o}
-            </Badge>
-          ))}
-          {unit.location?.city && (
-            <Badge variant="secondary" className="bg-neutral-800 text-neutral-200">
-              <MapPin className="h-3.5 w-3.5 mr-1" />
-              {unit.location.city}
-            </Badge>
-          )}
+        {/* Structured details (single column on mobile, two cols on sm+) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Left column */}
+          <div className="space-y-1.5">
+            <Row label="Bathrooms" value={typeof baths === "number" ? `${baths}` : undefined} />
+            <Row label="Kitchen / Kitchenette" value={(amen.kitchenette ?? []).join(", ") || undefined} />
+            <Row label="Bath amenities" value={(amen.bath ?? []).join(", ") || undefined} />
+            <Row label="Wellness" value={(amen.wellness ?? []).join(", ") || undefined} />
+            <Row label="Outdoor" value={(amen.outdoor ?? []).join(", ") || undefined} />
+          </div>
+
+          {/* Right column */}
+          <div className="space-y-1.5">
+            <Row
+              label={
+                <span className="inline-flex items-center gap-1">
+                  <Wifi className="h-4 w-4" /> Wi-Fi
+                </span>
+              }
+              value={unit.tech?.wifi?.available ? "Included" : "—"}
+            />
+            <Row
+              label={
+                <span className="inline-flex items-center gap-1">
+                  <Tv className="h-4 w-4" /> TV / Casting
+                </span>
+              }
+              value={
+                unit.tech?.tv?.available
+                  ? (["TV", unit.tech?.tv?.casting ? "Casting" : null].filter(Boolean) as string[]).join(" • ")
+                  : "—"
+              }
+            />
+            <Row
+              label={
+                <span className="inline-flex items-center gap-1">
+                  <Accessibility className="h-4 w-4" /> Accessibility
+                </span>
+              }
+              value={(unit.amenities?.accessibility ?? []).join(", ") || (unit.config?.ada ? "ADA" : undefined)}
+            />
+            <Row
+              label={
+                <span className="inline-flex items-center gap-1">
+                  <MapPin className="h-4 w-4" /> Location
+                </span>
+              }
+              value={
+                locCity
+                  ? `${locCity}${locState ? `, ${locState}` : ""}`
+                  : unit.location?.unitPositionNotes || "—"
+              }
+            />
+            <Row
+              label="Policies"
+              value={
+                [
+                  policies.smoking ? `Smoking: ${policies.smoking}` : null,
+                  policies.pets?.allowed != null ? `Pets: ${policies.pets.allowed ? "Allowed" : "Not allowed"}` : null,
+                  policies.checkInTime ? `Check-in ${policies.checkInTime}` : null,
+                  policies.checkOutTime ? `Check-out ${policies.checkOutTime}` : null,
+                ]
+                  .filter(Boolean)
+                  .join(" • ") || undefined
+              }
+            />
+          </div>
         </div>
 
+        {/* Labels / tags chips (optional) */}
+        {(unit.labels?.length || unit.tags?.length) ? (
+          <>
+            <Separator className="bg-neutral-800" />
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+              <div className="text-[13px] text-neutral-400">Highlights</div>
+              <Chips items={[...(unit.labels ?? []), ...(unit.tags ?? [])]} />
+            </div>
+          </>
+        ) : null}
+
+        {/* Dates (if provided) */}
         {dates && (dates.check_in || dates.check_out) && (
-          <div className="text-xs text-neutral-400">{dates.check_in ?? "—"} → {dates.check_out ?? "—"}</div>
+          <div className="text-xs text-neutral-400">
+            {dates.check_in ?? "—"} → {dates.check_out ?? "—"}
+          </div>
         )}
       </CardContent>
     </Card>
