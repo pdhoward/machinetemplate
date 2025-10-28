@@ -3,14 +3,17 @@
 import React from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 
-function formatMoney(amount?: number | string, currency?: string) {
+function formatMoney(amount?: number | string, currency = "USD") {
   if (amount == null || amount === "") return "—";
   const value = typeof amount === "string" ? Number(amount) : amount;
-  const iso = currency || "USD";
-  const normalized = value > 999 ? value / 100 : value;
-  try { return new Intl.NumberFormat(undefined, { style: "currency", currency: iso }).format(normalized); }
-  catch { return `${normalized.toFixed(2)} ${iso}`; }
+  if (!Number.isFinite(value)) return "—";
+  try {
+    return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(value);
+  } catch {
+    return `${value.toFixed(2)} ${currency}`;
+  }
 }
+
 
 export type Quote = {
   unit?: string;
