@@ -17,3 +17,11 @@ visual stage, use visuals, tools.ts, registry.tsx ....simplify this structure --
 - will need a an AI editor to create http tools for user
 
 - blog with an inviation - TRY IT
+
+- explore _lib and getActiveOtpSession used by transcripts api
+
+- app/docs - use AI to structure and write a set of user docs -- need editor mode for http tool descriptors
+
+- app/validate - needs docs - http descriptor linter and validation - critical for tool builds
+
+- explore addition of welcome (disclaimer for beta)- and maybe tools education (see garbage/machinetemplate/components)

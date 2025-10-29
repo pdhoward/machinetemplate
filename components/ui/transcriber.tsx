@@ -5,7 +5,7 @@ import * as AvatarPrimitive from "@radix-ui/react-avatar";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import ThreeDotsWave from "@/components/ui/three-dots-wave";
-import { Conversation } from "@/lib/conversations";
+import { Conversation } from "@/types/conversations";
 import { useTranslations } from "@/context/translations-context";
 
 /**

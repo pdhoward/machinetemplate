@@ -78,5 +78,11 @@ https://github.com/midday-ai/ai-sdk-tools
 
 * open source LLM registry for Vercel AI Gateway
 https://github.com/FranciscoMoretti/ai-registry/
-
 https://airegistry.app/
+
+* CARTESIA
+https://docs.cartesia.ai/get-started/overview
+
+* ShadCN
+https://ui.shadcn.com/docs/directory
+https://billingsdk.com/

@@ -14,13 +14,3 @@ export interface Message {
   }
 } 
 
-export type SessionStatus = "DISCONNECTED" | "CONNECTING" | "CONNECTED";
-
-// used in lib/loader/tools.ts
-export interface ExecutionTool {
-  name: string;
-  description: string;
-  schema: z.ZodObject<any>;
-  handler: (params: any) => Promise<any>;
-  agentId?: string;
-}

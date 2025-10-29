@@ -32,7 +32,7 @@ import type {ToolDef} from "@/types/tools"
 import { coreTools } from "@/types/tools";  
 
 import promptsJson from "@/promptlibrary/prompts.json"
-import { selectPromptForTenant, buildInstructions } from "@/lib/agent/prompts";
+import { selectPromptForTenant, buildInstructions } from "@/lib/agent/managePrompts";
 import type { StructuredPrompt } from "@/types/prompt";
  
 // ---------- page ----------
