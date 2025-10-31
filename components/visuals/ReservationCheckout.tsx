@@ -165,6 +165,34 @@ export default function ReservationCheckout(props: Props) {
   const currency = normalizeCurrency(props.currency);
   const amountCents = computeAmountCents(props);
 
+  // EXTRA CHECK TO BE SURE ALL ESSENTIAL DATA COLLECTED
+const hasEssential =
+  !!props.tenant_id && !!props.check_in && !!props.check_out && (props.amount_cents != null || props.nightly_rate != null);
+
+if (!hasEssential) {
+  return (
+    <Card className="bg-neutral-900 border-neutral-800">
+      <CardHeader><CardTitle>Preparing your checkout…</CardTitle></CardHeader>
+      <CardContent className="text-sm text-neutral-400">
+        We’re fetching your reservation details…
+      </CardContent>
+    </Card>
+  );
+}
+
+
+  /* DEBUGGING ----------------- */
+  console.log("[ReservationCheckout] DEBUGGING inputs", {
+    check_in: props.check_in,
+    check_out: props.check_out,
+    nights: nightsBetween(props.check_in, props.check_out),
+    nightly_rate: props.nightly_rate,
+    amount_cents_prop: props.amount_cents,
+    computed_amount_cents: amountCents,
+    currency: props.currency,
+  });
+
+
   // derive nights & total (base units) for display
   const derivedNights = props.nights ?? nightsBetween(props.check_in, props.check_out);
   const nightlyBase =
@@ -219,7 +247,11 @@ export default function ReservationCheckout(props: Props) {
 
         // Guard: we need an amount to create an intent (unless mock)
         if (!props.mock && (!Number.isFinite(amountCents as number) || (amountCents as number) <= 0)) {
-          throw new Error("Missing or invalid total amount.");
+          // Don’t throw; wait for the next props update
+          setPhase("initializing");
+          setErr(null);
+          say("Preparing your checkout details…");
+          return;
         }
 
         // TEST MODE: fully local, no Stripe

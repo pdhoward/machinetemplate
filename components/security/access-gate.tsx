@@ -10,6 +10,7 @@ import {
   RotateCcw,
   LogOut,
   Loader2,
+  HelpCircle, // NEW: Added for disclaimer icon
 } from "lucide-react";
 import { decodeJwt } from "jose";
 
@@ -28,6 +29,9 @@ import {
   InputOTPSlot,
   InputOTPSeparator,
 } from "@/components/ui/input-otp";
+const MotionHelpCircle = motion(HelpCircle);
+
+import { DISCLAIMER_TEXT, DISCLAIMER_TITLE } from "@/assets/disclaimers/20251030"; // NEW: Import shared disclaimer
 
 type Stage = "email" | "otp" | "done";
 type VisualState = "default" | "error" | "success";
@@ -208,6 +212,35 @@ export function AccessGate() {
             <p className="text-sm font-medium">
               {stage === "done" ? "Agent Activated" : "Activate Agent"}
             </p>
+            {/* Disclaimer icon with nested popover */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-5 w-5 ml-1"
+                  aria-label="View disclaimer"
+                >
+                  <MotionHelpCircle 
+                    className="h-4 w-4 text-muted-foreground"
+                    animate={{
+                      color: ["#6b7280", "#10b981", "#6b7280"] // from muted-foreground (gray) to emerald-500 (green) and back
+                    }}
+                    transition={{
+                      duration: 1.5,
+                      repeat: Infinity,
+                      ease: "easeInOut"
+                    }}
+                  />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-80 p-4">
+                <h3 className="text-sm font-medium mb-2">{DISCLAIMER_TITLE}</h3>
+                <p className="text-xs text-muted-foreground whitespace-pre-line">
+                  {DISCLAIMER_TEXT}
+                </p>
+              </PopoverContent>
+            </Popover>
           </div>
 
           <AnimatePresence mode="wait">

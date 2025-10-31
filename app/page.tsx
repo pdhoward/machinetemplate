@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 
 import { useRealtime } from '@/context/realtime-context';
 import { useTenant } from "@/context/tenant-context";

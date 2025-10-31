@@ -1,5 +1,6 @@
 // lib/email/transporter.ts
 import nodemailer from "nodemailer";
+import { DISCLAIMER_TEXT, DISCLAIMER_TITLE } from "@/assets/disclaimers/20251030"; //  Import shared disclaimer
 
 export const transporter = nodemailer.createTransport({
   service: process.env.TRANSPORT_SERVICE, // e.g., 'Gmail'
@@ -17,6 +18,11 @@ export async function sendOtpEmail(to: string, code: string) {
       <p>Use the following 6-digit code to activate your agent:</p>
       <div style="font-size:28px;font-weight:700;letter-spacing:8px">${code}</div>
       <p style="color:#666">This code expires in 10 minutes.</p>
+      <p>By entering this OTP, you acknowledge and agree to the following disclaimer:</p>
+      <div style="font-size:small; color:#666; white-space:pre-line;">
+        <strong>${DISCLAIMER_TITLE}</strong>
+        ${DISCLAIMER_TEXT}
+      </div>
     </div>
   `;
   const attachments = [

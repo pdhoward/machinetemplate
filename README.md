@@ -86,3 +86,6 @@ https://docs.cartesia.ai/get-started/overview
 * ShadCN
 https://ui.shadcn.com/docs/directory
 https://billingsdk.com/
+
+* resizable node
+https://tiptap.dev/docs/editor/api/resizable-nodeviews

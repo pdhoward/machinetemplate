@@ -176,6 +176,150 @@ If you add new tools in the future, this schema will enforce consistency. The da
 <StepCard title="Connect to Your Data" description="Expose data via APIs that tools can call. The agent uses returned objects to inform responses—e.g., describing products or checking availability.">
   Your APIs provide the "data grounding" for the agent. Design them to return rich JSON objects.
 
+RATE LIMITS: Why both IP and user?
+
+One user can abuse from many IPs (mobile, VPN, cloud).
+One IP (office, campus, café) can have many legit users.
+Combine both: block obvious floods at the IP layer (Edge), then apply precise user limits/quota (Server). This is the industry pattern (rate limit template + middleware).
+
+1) Bot + Rate protections (technical)
+Summary
+
+This app defends the realtime LLM endpoint using layered protections:
+
+Edge middleware — first line of defense at the edge (Vercel Edge / Next middleware). Fast IP + user limiting using Upstash or a dev in-memory fallback. Drops abusive traffic before it hits the API handler or DB.
+BotID (client + server) — distinguishes automated clients vs human browsers. Client injects signals; server call (checkBotId()) evaluates them and can block suspicious bots.
+Route-level rate limiter (withRateLimit) — server-side per-minute counters persisted in Mongo. Applies fixed-window counters and per-session tokens/dollars / daily quotas. It also clears session cookie if needed.
+Session creation guards — concurrent-session caps (per-user), OTP authentication requirement (optional via .env toggle), and normalized tools validation.
+In-session monitoring — client/server report of usage to /api/auth/usage, heartbeat endpoint for idle/duration enforcement, and session docs in Mongo to end sessions mid-stream when budget/duration exceeded.
+
+These layers work together to:
+
+Drop cheap/large-volume abusive traffic at the edge.
+Block scripted bots with BotID.
+Prevent single users from opening many realtime sessions.
+Track tokens and estimated dollars in near real time and terminate sessions when daily caps are hit.
+
+Full flow (step-by-step)
+
+0. Client behaviour (what the app does)
+
+Client loads <BotIdClient protect={[{path:'/api/session',method:'POST'}]} /> (or initBotId) in app/layout.tsx. BotID client collects signals and ensures the /api/session POST includes BotID headers.
+When starting a voice session the client POST /api/session with e.g. { model, voice, tools, instructions }. If OTP mode is enabled the request must include tenant_session cookie (set by OTP flow).
+
+1. Edge Middleware (middleware.ts) — first line
+
+Matcher: /api/session (scoped).
+
+What it enforces:
+
+IP-based per-minute limiter (edge). Uses Upstash Ratelimit if configured; falls back to an in-memory per-minute counter in dev.
+User-based per-minute limiter (edge) when the tenant_session cookie is present (uses email extracted from cookie).
+If user limit is exceeded -> returns 429 and clears cookie (optional).
+If IP limit is exceeded -> returns 429 (cookie may remain).
+
+Why keep it: cheap rejects before route handler/DB work, lower latency for drops, prevents large distributed scans.
+
+2. Route handler wrapper (withRateLimit) — server-side second line
+
+Called from app/api/session/route.ts (the route POST is wrapped with withRateLimit(req, handler, cfg)).
+
+What it does:
+
+Obtains IP and session info via getActiveOtpSession() if cookie present.
+Uses a Mongo-backed fixed-window counter (stored in ratelimits collection) to increment ip & user counters for the current minute window (upsert).
+Checks per-minute thresholds (configurable). On exceeding, returns 429 and clears cookie.
+Checks per-day quotas by reading the auth doc for the otp_session (usage tokens/dollars). If daily usage exceeds USER_MAX_TOKENS_DAILY / USER_MAX_DOLLARS_DAILY, mark session ended in DB, clear cookie, return 429.
+Why keep it: this is authoritative server state (Mongo) — harder for an attacker to manipulate than client counters.
+
+3. BotID server verdict (in createSession route)
+
+Server call: const verdict = await checkBotId().
+Decision: If verdict.isBot && !verdict.isVerifiedBot then reject 403. (You can tune policy to allow verified bots or blacklist certain bots.)
+
+Why: prevents scripted automation that mimics browsers and bypasses simple checks.
+
+4. OTP requirement (configurable)
+
+Function used: getActiveOtpSession() (reads tenant_session cookie and looks up auth session in Mongo).
+Policy toggle: set REQUIRE_AUTH_FOR_SESSION=true to force login before session creation.
+
+If required: createSession rejects 401 if no active OTP session.
+
+5. Concurrent session cap
+
+Behavior: the realtime_sessions collection stores docs { _id: 's:${emailHash}:${opaqueId}', emailHash, startedAt, lastSeenAt, active }.
+When creating a session, we countDocuments({ emailHash, active: true }) and reject with 429 if >= MAX_CONCURRENT_SESSIONS_PER_USER.
+Why: stops one user from opening many simultaneous streams.
+
+6. Upstream OpenAI realtime session creation
+
+If checks pass, we call the OpenAI realtime sessions endpoint and return the upstream id plus our sm_session_id. We store a local session doc to enable heartbeats, idle checks, and mid-stream termination.
+
+7. In-session usage reporting and enforcement
+
+Client should report response.done usage events to /api/auth/usage with { tokens, dollars }. (Prefer server-side relay if tamper-proof needed.)
+Server stores tokens/dollars in the auth doc (auth.usage.tokens, auth.usage.dollars) through app/api/auth/usage/route.ts.
+
+Heartbeat endpoint: client pings /api/realtime/heartbeat periodically with { sm_session_id, email }. Server checks:
+Session duration vs MAX_SESSION_MINUTES
+Idle time vs MAX_SESSION_IDLE_SEC
+Daily quota vs usage_daily doc
+
+If any exceeded -> server sets realtime_sessions.active=false, clears cookie, returns 403 + reason -> client must close peer connection.
+
+Why: allows mid-stream shutdown when a user keeps talking and hits budget or time limits.
+
+Where token/dollar accounting originates
+
+Best: use the Realtime API response.done events which include usage totals. Client forwards those to /api/auth/usage. Server increments auth.usage.
+Reconciliation: optionally poll OpenAI Usage API periodically to reconcile for billing accuracy.
+
+.env configuration (names, meanings, defaults)
+
+Put these in .env — the app reads them to tune behavior.
+
+RATE_IP_PER_MIN — integer. Max requests per IP per minute at the edge. Default: 60.
+RATE_USER_PER_MIN — integer. Max requests per user per minute at the edge. Default: 120.
+USER_MAX_TOKENS_DAILY — integer. Max tokens allowed per user per day before hard stop. Default: 150000.
+USER_MAX_DOLLARS_DAILY — number. Max estimated dollars allowed per user per day. Default: 15.
+MAX_CONCURRENT_SESSIONS_PER_USER — integer. Max live realtime sessions per user. Default: 2.
+MAX_SESSION_MINUTES — integer. Max duration per session (minutes). Default: 15.
+MAX_SESSION_IDLE_SEC — integer. Max idle time (seconds) allowed. Default: 90.
+
+UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN — Upstash configuration for edge-limiter. If missing, middleware falls back to in-memory limiter (dev only).
+
+REQUIRE_AUTH_FOR_SESSION — true|false. If true, /api/session requires an active OTP session cookie. Default: false (makes demo public but protected by BotID & rate-limits).
+
+JWT_SECRET, TRANSPORT_*, OPENAI_API_KEY, DB envs — other envs used by routes.
+
+How the system catches a protracted conversation (example timeline)
+
+1. User opens session; client posts to /api/session:
+2. Edge middleware checks IP & user minutely counters; allows or rejects.
+3. Route-level withRateLimit increments Mongo counters and checks per-minute limits + daily quotas.
+4. BotID server check validates client.
+5. OTP check (if required) ensures identity.
+6. Concurrent sessions check prevents many sessions.
+6. Upstream session is created and local realtime_sessions doc added.
+7. User interacts with the agent for many turns:
+8. Client receives response.done events and posts usage (tokens/dollars) to /api/auth/usage. Server increments auth.usage.
+9. Heartbeats from client update realtime_sessions.lastSeenAt.
+10. When the user reaches daily tokens/dollars OR session duration/idle thresholds:
+-- enforceDailyQuota() or heartbeat checks detect overage.
+-- Server marks realtime_sessions.active=false, updates auth to status: 'ended', clears cookie, returns error to client.
+-- Client receives error / close signal and closes the peer connection.
+
+Because usage is tracked during the session and both minute- and daily-level quotas are enforced, a long protracted conversation will be caught either at the moment the /api/auth/usage increment pushes the auth doc beyond daily thresholds, or when heartbeat detects duration/idle violation.
+
+Troubleshooting tips:
+
+- If you see many 404/botid script errors: verify next.config.ts uses withBotId, client <BotIdClient /> is in layout, and you restarted dev server.
+- If middleware returns 429 prematurely: check Upstash quotas & keys or change RATE_IP_PER_MIN/RATE_USER_PER_MIN.
+- To debug per-user counters: inspect ratelimits (Mongo) and realtime_sessions collections.
+
+For reconciliation of dollars: periodically poll OpenAI Usage API and reconcile with your auth.usage store.
+
 </StepCard>
 
   1. **Build/Examine APIs**: Ensure endpoints match your tool descriptors. Use secure auth (e.g., Bearer tokens via secrets).

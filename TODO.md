@@ -24,3 +24,6 @@ visual stage, use visuals, tools.ts, registry.tsx ....simplify this structure --
 - app/validate - needs docs - http descriptor linter and validation - critical for tool builds
 
 - explore addition of welcome (disclaimer for beta)- and maybe tools education (see garbage/machinetemplate/components)
+
+- upgrade to nextjs 16 use codemod to assist in upgrade
+https://nextjs.org/docs/app/guides/upgrading/version-16
