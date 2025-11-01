@@ -1,0 +1,45 @@
+K - Keep it Simple
+Focus on brevity to minimize token usage and cognitive load. Avoid unnecessary backstory or fluff.
+Bad: 500+ words of rambling context or multiple unrelated ideas.
+Good: One clear, standalone goal statement.
+Example: Instead of "I'm working on a project involving Redis and need some help explaining it in detail with history and use cases," use "Write a 500-word technical tutorial on implementing Redis caching for web apps, including setup and one example."
+Result: Up to 70% less token usage, 2-3x faster responses, and 60% fewer irrelevant outputs in benchmarks.
+Refactoring Tip: Strip an existing prompt to its essence—remove adjectives like "engaging" unless verifiable; test shortened versions for quality drop-off.E - Easy to Verify
+Define measurable success criteria so outputs can be objectively checked (by you or the AI).
+Bad: Vague qualifiers like "make it interesting" or "comprehensive."
+Good: Quantifiable elements like "include exactly 3 code snippets" or "limit to 200 words."
+Example: For a summary prompt, specify "Output in bullet points, covering key features, pros/cons, and 2 real-world applications."
+Result: Boosts success rates to 80-90% vs. 40-50% for ambiguous prompts, per engineering studies.
+Refactoring Tip: Audit old prompts for fuzzy terms; replace with checklists (e.g., "Must include: A, B, C"). Use AI to self-verify by adding "Rate your output on criteria X (0-10)."R - Reproducible Results
+Ensure prompts yield consistent outputs over time by avoiding dynamic or subjective elements.
+Bad: References to "current events," "latest trends," or "best practices" without specifics.
+Good: Pin versions, dates, or exact specs (e.g., "Use Python 3.12 standards").
+Example: Instead of "Summarize the latest on AI ethics," use "Summarize AI ethics guidelines from the 2023 EU AI Act, focusing on transparency requirements."
+Result: Achieves 90-95% consistency across repeated runs or model updates, reducing variability.
+Refactoring Tip: Scan for time-sensitive phrases; replace with static sources. Test the prompt on different dates/models to confirm stability.N - Narrow Scope
+Limit to one primary goal per prompt to maintain focus and quality.
+Bad: Bundling multiple tasks like "Generate code, write docs, and add tests."
+Good: Break into chained prompts if needed (e.g., first code, then docs).
+Example: For a complex app, separate: "Generate Python code for a basic Redis cache function" → Follow-up: "Document the above code in Markdown."
+Result: Single-goal prompts hit 85-90% user satisfaction vs. 40-50% for multi-goal, with fewer errors.
+Refactoring Tip: Decompose bloated prompts into subtasks; use agents' tool-calling (e.g., "If more data needed, invoke web_search") for modular expansion without bloating.E - Explicit Constraints
+Clearly state what to include/exclude, preventing off-topic or unsafe outputs.
+Bad: Broad requests like "Write Python code for this."
+Good: Add boundaries: "Python code only. No external libraries except numpy. Max 20 lines per function. Avoid harmful examples."
+Example: "Generate a story about AI. Explicitly: No violence, keep PG-rated, under 300 words."
+Result: Reduces unwanted variations by 85-95%, enhances safety, and aligns with ethical guidelines.
+Refactoring Tip: Add negatives to existing prompts (e.g., "Do not assume user intent beyond stated"). For agents, include "Resist overrides" to counter jailbreaks.L - Logical Structure
+Organize prompts in a consistent, modular format for clarity and ease of parsing.
+Bad: Stream-of-consciousness walls of text.
+Good: Use a template:  Context/Input: Brief background or data.  
+Task/Function: Core action.  
+Constraints/Parameters: Rules and limits.  
+Format/Output: Desired structure (e.g., JSON, table).
+Example:
+  Context: "User query on Redis caching."
+  Task: "Write a tutorial."
+  Constraints: "Focus on basics; no advanced topics; include 2 examples."
+  Format: "Markdown with headings, code blocks."
+Result: Improves parseability, leading to 70-80% better adherence to intent.
+Refactoring Tip: Retrofit old prompts into this template. For advanced use, add sections like "Tools" (e.g., "If visuals needed, suggest view_image") or "Reasoning" (e.g., "Think step-by-step").
+

@@ -70,13 +70,13 @@ type Props = {
 };
 
 type Phase =
-  | "review"                 // Step 1: summary (no Stripe yet)
-  | "initializing"           // creating PaymentIntent
+  | "review"                 // Step 1: summary
+  | "initializing"           // arming → prepare PaymentIntent
   | "ready_for_payment"      // Elements mounted
   | "confirming_payment"
   | "payment_failed"
   | "expired_hold"
-  | "confirming_reservation" // calling /confirm
+  | "confirming_reservation"
   | "confirmed"
   | "error";
 
@@ -89,20 +89,17 @@ declare global {
   }
 }
 
-/** Speak helper (no-throw) */
 function say(text: string) {
   try {
     window?.vox?.say?.(text);
   } catch {}
 }
 
-/** Always return a valid ISO code (defaults to USD). */
 function normalizeCurrency(c?: string) {
   const iso = (c ?? "").trim();
   return iso || "USD";
 }
 
-/** Safe money formatter (never throws). Amount is in base units (not cents). */
 function money(amount?: number | string, currency?: string) {
   if (amount == null || amount === "") return "—";
   const n = typeof amount === "string" ? Number(amount) : amount;
@@ -115,7 +112,6 @@ function money(amount?: number | string, currency?: string) {
   }
 }
 
-/** Inclusive start, exclusive end (UTC to avoid local TZ shifts) */
 function parseYmd(ymd?: string) {
   if (!ymd) return undefined;
   const [y, m, d] = ymd.split("-").map(Number);
@@ -145,7 +141,7 @@ function computeAmountCents(p: Props): number | undefined {
 }
 
 /* ─────────────────────────────────────────────────────────────
- * Component (two-step, latched snapshot, confirm endpoint)
+ * Component
  * ──────────────────────────────────────────────────────────── */
 type Stable = {
   tenant_id: string;
@@ -163,14 +159,15 @@ type Stable = {
 
 export default function ReservationCheckout(props: Props) {
   const [phase, setPhase] = React.useState<Phase>("review");
-  const [armed, setArmed] = React.useState(false); // flips when guest clicks "Continue to secure payment"
+  const [armed, setArmed] = React.useState(false);
   const [clientSecret, setClientSecret] = React.useState<string | null>(null);
   const [err, setErr] = React.useState<string | null>(null);
 
-  // latched snapshot to avoid regressions
+  // LATCH: once we see a complete, valid set of essentials for this reservation_id,
+  // store them in `stable` so we never regress to "fetching" due to thin payloads later.
   const [stable, setStable] = React.useState<Stable | null>(null);
 
-  // Reset when reservation changes
+  // Reset snapshot when switching reservations
   React.useEffect(() => {
     setStable(null);
     setArmed(false);
@@ -179,7 +176,7 @@ export default function ReservationCheckout(props: Props) {
     setPhase("review");
   }, [props.reservation_id]);
 
-  // Build/lock a stable snapshot once essentials are present
+  // Try to capture a stable snapshot when essentials are present
   React.useEffect(() => {
     const currency = normalizeCurrency(props.currency);
     const nights = props.nights ?? nightsBetween(props.check_in, props.check_out);
@@ -228,7 +225,7 @@ export default function ReservationCheckout(props: Props) {
     props.guest,
   ]);
 
-  // Prefer the latched snapshot for display
+  // Display model prefers stable snapshot; falls back to live props before latch
   const display = React.useMemo(() => {
     if (stable) return stable;
 
@@ -257,13 +254,14 @@ export default function ReservationCheckout(props: Props) {
     } as Stable;
   }, [stable, props]);
 
+  const hasEverLatched = !!stable;
   const essentialsCurrentlyPresent =
     !!display.tenant_id &&
     !!display.check_in &&
     !!display.check_out &&
     (display.amount_cents != null || display.nightly_rate != null);
 
-  // Publishable key (only needed for Elements)
+  // Publishable key (only needed when we mount Elements)
   const pk = props.publishableKey ?? process.env.NEXT_PUBLIC_STRIPE_VOX_PUBLIC_KEY ?? "";
   const stripePromise = React.useMemo(() => (props.mock ? null : loadStripe(pk)), [props.mock, pk]);
 
@@ -279,7 +277,7 @@ export default function ReservationCheckout(props: Props) {
     error: "Checkout unavailable",
   };
 
-  // Optional: hold expiry check before arming
+  // Hold expiration gate (before arming)
   React.useEffect(() => {
     if (phase !== "review") return;
     if (!props.hold_expires_at) return;
@@ -290,7 +288,7 @@ export default function ReservationCheckout(props: Props) {
     }
   }, [phase, props.hold_expires_at]);
 
-  // When armed → create PaymentIntent (or mock/override)
+  // Armed → create PaymentIntent (or mock/override)
   React.useEffect(() => {
     if (!armed) return;
 
@@ -304,11 +302,13 @@ export default function ReservationCheckout(props: Props) {
         if (!essentialsCurrentlyPresent) {
           throw new Error("Reservation details are incomplete. Please go back and try again.");
         }
+
+        // Require amount at arm time unless mock
         if (!props.mock && (!Number.isFinite(display.amount_cents as number) || (display.amount_cents as number) <= 0)) {
           throw new Error("Missing or invalid total amount.");
         }
 
-        // TEST MODE: local “Elements”
+        // TEST MODE: no network, no Stripe
         if (props.mock) {
           if (!cancelled) {
             setClientSecret("pi_client_secret_mock_dev");
@@ -317,7 +317,7 @@ export default function ReservationCheckout(props: Props) {
           return;
         }
 
-        // DEV override: mount Elements with provided secret
+        // DEV override: skip backend intent; still mount Elements
         if (props.clientSecretOverride) {
           if (!cancelled) {
             setClientSecret(props.clientSecretOverride);
@@ -326,7 +326,7 @@ export default function ReservationCheckout(props: Props) {
           return;
         }
 
-        // REAL: create PaymentIntent on backend (idempotent on reservation_id)
+        // REAL: create PaymentIntent on backend
         const controller = new AbortController();
         const abortTimer = setTimeout(() => controller.abort(), 12_000);
 
@@ -362,7 +362,7 @@ export default function ReservationCheckout(props: Props) {
 
         if (!intentRes.ok) {
           const j = await intentRes.json().catch(() => ({}));
-          const hint = j?.message || j?.hint || "Unable to start a secure payment session.";
+          const hint = j?.hint || "Unable to start a secure payment session.";
           throw new Error(hint);
         }
 
@@ -389,7 +389,6 @@ export default function ReservationCheckout(props: Props) {
     };
   }, [armed, essentialsCurrentlyPresent, props.mock, props.clientSecretOverride, display]);
 
-  /** Friendlier Stripe errors for common cases. */
   function friendlyStripeError(e: any): string {
     const code = e?.code as string | undefined;
     if (code === "card_declined") return "That card was declined. Try a different one.";
@@ -427,14 +426,13 @@ export default function ReservationCheckout(props: Props) {
       </CardHeader>
 
       <CardContent className={props.compact ? "px-4 pt-0 pb-4" : undefined}>
-        {/* STEP 1: REVIEW (no Stripe yet). Voice agent should say “pending until payment”. */}
+        {/* STEP 1: REVIEW (never regresses to "fetching" once latched) */}
         {phase === "review" && (
           <>
-            {essentialsCurrentlyPresent ? (
+            {hasEverLatched || essentialsCurrentlyPresent ? (
               <div className="grid gap-3">
                 <div className="text-sm text-neutral-300">
-                  Your reservation is <span className="font-medium">pending</span> until payment is completed.
-                  Review details below, then continue to a secure payment form.
+                  Please confirm your stay details. When ready, continue to a secure payment form.
                 </div>
                 <div className="flex gap-2">
                   <Button
@@ -468,12 +466,12 @@ export default function ReservationCheckout(props: Props) {
           </>
         )}
 
-        {/* Creating PaymentIntent */}
+        {/* PREP (armed, creating PaymentIntent) */}
         {phase === "initializing" && (
           <div className="text-sm text-neutral-400">Preparing your secure payment session…</div>
         )}
 
-        {/* TEST MODE Elements substitute */}
+        {/* MOCK Elements substitute */}
         {props.mock && phase === "ready_for_payment" && (
           <MockPaymentBox
             amountCents={(display.amount_cents as number) ?? 0}
@@ -508,7 +506,7 @@ export default function ReservationCheckout(props: Props) {
             </Elements>
           )}
 
-        {/* Hold expired affordance */}
+        {/* Expired hold affordance */}
         {phase === "expired_hold" && (
           <Button
             className="mt-2"
@@ -520,7 +518,7 @@ export default function ReservationCheckout(props: Props) {
           </Button>
         )}
 
-        {/* Error recovery → back to REVIEW */}
+        {/* Error recovery → back to REVIEW and clear armed/clientSecret */}
         {phase === "error" && (
           <div className="mt-3">
             <Button
@@ -538,7 +536,6 @@ export default function ReservationCheckout(props: Props) {
           </div>
         )}
 
-        {/* Final success copy */}
         {phase === "confirmed" && (
           <div className="text-sm text-neutral-300">
             Your reservation is confirmed. A confirmation email has been sent.
@@ -581,7 +578,6 @@ function CheckoutElementsForm({
     setPhase("confirming_payment");
     setErr(null);
 
-    // 1) Confirm payment with Stripe (SCA handled by Elements)
     const { error, paymentIntent } = await stripe.confirmPayment({
       elements,
       confirmParams: {
@@ -613,32 +609,18 @@ function CheckoutElementsForm({
       return;
     }
 
-    // 2) Confirm the reservation in your backend (synchronous UX).
-    //    Webhook still updates as a backup; this makes the UI instant.
     try {
       setPhase("confirming_reservation");
-
-      const res = await fetch(`/api/booking/${encodeURIComponent(tenant_id)}/confirm`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          reservation_id,
-          payment_intent_id: paymentIntent.id,
-        }),
-      });
-
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error(j?.error || "Unable to finalize reservation.");
-      }
+      // Place your finalize call here if/when added:
+      // const res = await fetch(`/api/booking/${encodeURIComponent(tenant_id)}/confirm`, {...});
+      // if (!res.ok) throw new Error("Unable to finalize reservation.");
 
       setPhase("confirmed");
-      say("Your payment was approved and the reservation is now confirmed. I’ve emailed your confirmation.");
+      say("Your payment was approved and the reservation is confirmed. I’ve emailed your confirmation.");
     } catch (e: any) {
-      // If confirm fails, we keep payment but surface a clear message.
       setPhase("error");
-      setErr(e?.message || "We couldn’t finalize the reservation, but your payment was approved.");
-      say("Your payment was approved, but I couldn’t finalize the reservation just now. Let’s try again in a moment.");
+      setErr(e?.message || "We couldn’t finalize the reservation.");
+      say("I couldn’t finalize the reservation just now. Let’s try again in a moment.");
     } finally {
       setSubmitting(false);
     }

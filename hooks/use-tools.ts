@@ -226,10 +226,11 @@ export const useToolsFunctions = () => {
 
   return {
     timeFunction,
-    backgroundFunction,
-    partyFunction,
+    backgroundFunction,    
     launchWebsite,
     copyToClipboard,
     scrapeWebsite,   
   }
 }
+
+// partyFunction not returned right now - not needed for this use case
