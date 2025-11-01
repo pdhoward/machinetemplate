@@ -6,10 +6,7 @@ export const runtime = "nodejs"; // Stripe SDK needs Node (not Edge)
 
 const stripe = new Stripe(process.env.STRIPE_VOX_SECRET_KEY!);
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ tenantId: string }> } 
-) {
+export async function POST( req: NextRequest, { params }: { params: Promise<{ tenantId: string }> }) {
   try {
     const { tenantId } = await params;
     const body = await req.json();

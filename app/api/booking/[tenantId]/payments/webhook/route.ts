@@ -8,7 +8,7 @@ export const runtime = "nodejs"; // Stripe SDK needs Node
 
 const stripe = new Stripe(process.env.STRIPE_VOX_SECRET_KEY!);
 
-export async function POST(req: NextRequest, { params }: { params: { tenantId: string } }) {
+export async function POST(req: NextRequest) {
   const sig = req.headers.get("stripe-signature") || "";
   const rawBody = await req.text(); // string is fine for constructEvent
 
