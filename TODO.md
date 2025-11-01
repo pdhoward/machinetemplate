@@ -40,3 +40,7 @@ https://nextjs.org/docs/app/guides/upgrading/version-16
 - for various throw errors - the error page not rendering
 
 - need to work on the docs - maybe use shadcn for display?
+
+- for production version - recheck the stripe payment process and also it appears that i asked for 2 nights ... but the reservation was recorded for 3 nights???
+
+- also update the booking-engine app so that confirmed reservations are marked on the calendar
