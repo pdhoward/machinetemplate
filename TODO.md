@@ -12,6 +12,7 @@ visual stage, use visuals, tools.ts, registry.tsx ....simplify this structure --
 
 - ask groq to generate user docs?
 -- note that http tool descriptors connect 3rd party apis to instructions for the AI engine (when to call, how to call, how to handle a response)
+-- especially for Reservation cmponent - pretty complex with Stripe
 
 - will need a an AI editor to create http tools for user
 
@@ -27,3 +28,15 @@ visual stage, use visuals, tools.ts, registry.tsx ....simplify this structure --
 
 - upgrade to nextjs 16 use codemod to assist in upgrade
 https://nextjs.org/docs/app/guides/upgrading/version-16
+
+- for Transcript component - created_at is being set to updated_at ,,, debug we need to keep the original create date
+
+- when errors thrown for rates and 'too many sessions' ... need a user friendly message on web page
+
+- also - put admin function in so i do no get rate limited?
+
+- see tool validate function - failing on custom tools
+
+- for various throw errors - the error page not rendering
+
+- need to work on the docs - maybe use shadcn for display?

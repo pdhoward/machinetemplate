@@ -8,10 +8,8 @@ export const runtime = "nodejs";
 
 const stripe = new Stripe(process.env.STRIPE_VOX_SECRET_KEY!);
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: { tenantId: string } }
-) {
+export async function POST(req: NextRequest ) {
+
   try {
     const { reservation_id, payment_intent_id } = await req.json();
 
@@ -28,7 +26,7 @@ export async function POST(
     // 2) Update reservation → confirmed (idempotent)
     const { db } = await getMongoConnection(process.env.DB!, process.env.MAINDBNAME!);
     const Reservations = db.collection("reservations");
-    const _id = new ObjectId(reservation_id);
+    const _id = ObjectId.createFromTime(reservation_id);
 
     const doc = await Reservations.findOne({ _id });
     if (!doc) {
