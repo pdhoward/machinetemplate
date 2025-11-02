@@ -43,4 +43,6 @@ https://nextjs.org/docs/app/guides/upgrading/version-16
 
 - for production version - recheck the stripe payment process and also it appears that i asked for 2 nights ... but the reservation was recorded for 3 nights???
 
+- for prod vs dev - disable rate limits and session limits in dev
+
 - also update the booking-engine app so that confirmed reservations are marked on the calendar
