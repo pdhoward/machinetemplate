@@ -65,3 +65,57 @@ Set up a cron (GitHub Actions, Render cron, Vercel Cron, etc.) to call npm run c
 
 - also what calls the heartbeat every 60 sec?
 
+----------------------
+- got errors when testing stripe with creadit card
+hook.js:608 You may test your Stripe.js integration over HTTP. However, live Stripe.js integrations must use HTTPS.
+
+hook.js:608 [Stripe.js] It looks like Stripe() was called many times with the same API key and options. For best performance, create and share a single instance of the Stripe object. https://stripe.com/docs/js/initializing
+9
+hook.js:608 You may test your Stripe.js integration over HTTP. However, live Stripe.js integrations must use HTTPS.
+
+ [Stripe.js] The following payment method types are not activated:
+
+- klarna
+
+They will be displayed in test mode, but hidden in live mode. Please activate the payment method types in your dashboard (https://dashboard.stripe.com/settings/payment_methods) and ensure your account is enabled for any preview features that you are trying to use.
+
+ [Stripe.js] You have not registered or verified the domain, so the following payment methods are not enabled in the Payment Element: 
+
+- apple_pay
+
+Please follow https://stripe.com/docs/payments/payment-methods/pmd-registration to register and verify the domain.
+
+ERROR - Failed to load resource: the server responded with a status of 404 (Not Found) ...000/api/booking/cypress-resorts/confirm:1  (use ngrok?)
+
+then this
+hook.js:608 Unhandled payment Element loaderror 
+Object
+error
+: 
+message
+: 
+"This PaymentIntent is in a terminal state and cannot be used to initialize Elements. Avoid rendering Elements in this state, or create a new PaymentIntent if intending to collect new payment details."
+status
+: 
+400
+type
+: 
+"invalid_request_error"
+
+----------
+
+ALSO - ADDRESS THE ADDITIONAL CHATGPT ACTIONS - FOR HEARTBEAT AND USAGE ACCOUTING
+Drop-in summary (what to change)
+
+WebRTCClient: add setSmSessionId / getSmSessionId.
+
+Provider:
+
+In tokenProvider, after /api/session, call client.setSmSessionId(j.sm_session_id).
+
+Add the useEffect heartbeat loop tied to status.
+
+Enhance handleServerEvent to call /api/usage/report when extractUsage(ev) returns a payload.
+
+That’s it. Once you make these changes, open Atlas and you should see usage_daily.dollars/tokens incrementing as you talk to the agent, and realtime_sessions.lastSeenAt marching forward every ~45s.
+
