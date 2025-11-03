@@ -1,4 +1,4 @@
-// app/api/session/route.ts
+// /app/api/session/route.ts
 import { NextResponse, NextRequest } from "next/server";
 import crypto from "crypto";
 import getMongoConnection from "@/db/connections";
@@ -28,7 +28,8 @@ function normalizeTools(raw: any): any[] {
 }
 
 async function safeJson(req: Request) {
-  try { return await req.json(); } catch { return {}; }
+  try { return await req.json(); } 
+  catch { return {}; }
 }
 
 type RealtimeSessionDoc = {
@@ -44,21 +45,24 @@ async function createSession(req: NextRequest) {
     return NextResponse.json({ error: "OPENAI_API_KEY not set" }, { status: 500 });
   }
 
-  // 1) Bot check (block suspicious automation)
+  // 1) Bot check
   const verdict = await checkBotId();
   if (verdict.isBot && !verdict.isVerifiedBot) {
     return NextResponse.json({ error: "Bot verification failed" }, { status: 403 });
   }
 
-  // 2) Require OTP session (your policy)
-  const sess = await getActiveOtpSession(req as any);
-  if (!sess) return NextResponse.json({ error: "No active session" }, { status: 401 });
+  // 2) Require OTP session if policy says so
+  if (rateCfg.requireAuthForSession) {
+    const sess = await getActiveOtpSession(req as any);
+    if (!sess) return NextResponse.json({ error: "No active session" }, { status: 401 });
+  }
 
   const body = await safeJson(req as any);
 
   // 3) Identity + sanitize inputs
-  const email = sess.email; // trust server session over client
-  const emailHash = sha256Hex(email || "anon");
+  const sess = await getActiveOtpSession(req as any);
+  const email = sess?.email || "anon"; // prefer server session over client
+  const emailHash = sha256Hex(email);
   const model = ALLOWED_MODELS.has(body.model) ? body.model : "gpt-realtime";
   const voice = ALLOWED_VOICES.has(body.voice) ? body.voice : "alloy";
   const tools = normalizeTools(body.tools);
@@ -66,13 +70,13 @@ async function createSession(req: NextRequest) {
   // 4) Per-user concurrent sessions cap
   const { db } = await getMongoConnection(process.env.DB!, process.env.MAINDBNAME!);
   const sessions = db.collection<RealtimeSessionDoc>("realtime_sessions");
-  const maxConcurrent = Number(process.env.MAX_CONCURRENT_SESSIONS_PER_USER || 2);
+  const maxConcurrent = rateCfg.maxConcurrentPerUser;
   const activeCount = await sessions.countDocuments({ emailHash, active: true });
   if (activeCount >= maxConcurrent) {
     return NextResponse.json({ error: "Too many active sessions" }, { status: 429 });
   }
 
-  // 5) Create OpenAI Realtime session
+   // 5) Create OpenAI Realtime session
   const payload = {
     model,
     voice,
@@ -91,9 +95,9 @@ async function createSession(req: NextRequest) {
 
   const upstream = await fetch("https://api.openai.com/v1/realtime/sessions", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-      "Content-Type": "application/json",
+    headers: { 
+      Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 
+      "Content-Type": "application/json" 
     },
     body: JSON.stringify(payload),
   });
@@ -106,7 +110,7 @@ async function createSession(req: NextRequest) {
 
   const data = await upstream.json();
 
-  // 6) Track our local session for quotas/heartbeat/idle
+  // 6) Track local session for quotas/heartbeat/idle
   const opaqueId: string = data?.id || crypto.randomUUID();
   await sessions.updateOne(
     { _id: `s:${emailHash}:${opaqueId}` },
@@ -118,10 +122,12 @@ async function createSession(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  // withRateLimit = per-IP + per-user + per-session + daily quotas
+  // Edge already enforced per-IP and per-USER per-minute. Here we enforce:
+  // - per-SESSION per-minute; and
+  // - daily token/$ quotas.
   return withRateLimit(req, () => createSession(req), {
-    userPerMin: rateCfg.userPerMin,
-    ipPerMin:  rateCfg.ipPerMin,
     sessionPerMin: rateCfg.sessionPerMin,
+    maxDailyTokens: rateCfg.maxDailyTokens,
+    maxDailyDollars: rateCfg.maxDailyDollars,
   });
 }

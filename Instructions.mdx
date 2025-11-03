@@ -312,6 +312,66 @@ How the system catches a protracted conversation (example timeline)
 
 Because usage is tracked during the session and both minute- and daily-level quotas are enforced, a long protracted conversation will be caught either at the moment the /api/auth/usage increment pushes the auth doc beyond daily thresholds, or when heartbeat detects duration/idle violation.
 
+---------------------------------------------------
+Storage model & what those Mongo docs mean
+
+### Collections
+
+* **`ratelimits`** (per-minute counters; fixed window)
+
+  * `_id`: `"<scope>:<key>:<winId>"` where
+
+    * `scope` ∈ {`ip`, `user`, `sess`}
+    * `key`   = IP string, `sha256(email)`, or `sessionTokenHash`
+    * `winId` = `floor(epochSeconds / windowSec)` — a rolling integer that identifies the current fixed window
+  * `count`: how many requests within this (scope, key, window) so far
+  * `windowSec`: the size of the fixed window (defaults `60`)
+  * `createdAt`: when this window doc was first created
+
+  **Example you saw:**
+
+  ```json
+  {"_id":"ip:127.0.0.1:29367014","count":1,"createdAt":"2025-...","windowSec":60}
+  ```
+
+  This means: for IP `127.0.0.1` in the window whose id is `29367014` (which corresponds to a specific 60s slice), 1 call has been counted.
+
+* **`realtime_sessions`** (active session registry)
+
+  * `_id`: `"s:<sha256(email)>:<opaqueSessionId>"`
+  * `emailHash`: `sha256(email)` to avoid storing raw email in this collection
+  * `startedAt`: when we created the upstream Realtime session
+  * `lastSeenAt`: last heartbeat/interaction (update this via your socket/WS ping or an HTTP heartbeat)
+  * `active`: boolean flag; set to `false` on orderly close, or by janitor when idle or over max duration
+
+  **Example you saw:**
+
+  ```json
+  {
+    "_id": "s:dca6...7621:sess_CXAlw...",
+    "active": true,
+    "emailHash": "dca6...7621",
+    "lastSeenAt": "2025-...",
+    "startedAt": "2025-..."
+  }
+  ```
+
+  This means: a live session for that user hash started at `startedAt`, was last active at `lastSeenAt`, and is currently `active: true`.
+
+* **`usage_daily`** (per-user daily quotas)
+
+  * `_id`: `"d:<sha256(email)>:<YYYY-MM-DD>"`
+  * `tokens`, `dollars`: running totals for that day
+  * Updated by your usage accounting hook after each completion/stream chunk.
+
+### Upstash Redis (edge)
+
+* We use Upstash’s **sliding window** limiter. 
+Keys are ephemeral and managed by Upstash; you may not see persistent keys in the dashboard. 
+With `analytics: true`, Upstash records aggregated stats you can inspect. 
+If you prefer visible counters, mirror increments into Mongo for debugging (behind a `DEBUG_METRICS` flag) — not recommended for prod.
+
+-------------------
 Troubleshooting tips:
 
 - If you see many 404/botid script errors: verify next.config.ts uses withBotId, client <BotIdClient /> is in layout, and you restarted dev server.
@@ -319,6 +379,50 @@ Troubleshooting tips:
 - To debug per-user counters: inspect ratelimits (Mongo) and realtime_sessions collections.
 
 For reconciliation of dollars: periodically poll OpenAI Usage API and reconcile with your auth.usage store.
+
+### Limits at a glance
+
+| Category                         | What it controls                                                   | Default (env)                          | Where enforced           | What happens when exceeded                                                               |
+| -------------------------------- | ------------------------------------------------------------------ | -------------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------- |
+| **Requests per IP**              | Max `/api/session` calls per minute from the same IP               | `RATE_IP_PER_MIN = 60`                 | **Edge (Upstash)**       | HTTP `429 Too Many Requests`. `Retry-After` header tells client when to retry.           |
+| **Requests per user**            | Max `/api/session` calls per minute by the same authenticated user | `RATE_USER_PER_MIN = 120`              | **Edge (Upstash)**       | HTTP `429`. If authenticated, we may clear the session cookie to stop automated retries. |
+| **Requests per session**         | Max API calls per minute within a single live session              | `RATE_SESSION_PER_MIN = 6`             | **Server (Mongo)**       | HTTP `429`. The client should slow down microphone/turn cadence.                         |
+| **Daily tokens per user**        | Max LLM tokens the user can spend per day                          | `USER_MAX_TOKENS_DAILY = 150000`       | **Server (Mongo)**       | HTTP `429` once over the cap; session may be ended.                                      |
+| **Daily dollars per user**       | Max dollars the user can spend per day                             | `USER_MAX_DOLLARS_DAILY = 5`           | **Server (Mongo)**       | HTTP `429`. Prevents surprise bills.                                                     |
+| **Concurrent sessions per user** | How many live realtime sessions a user may run at once             | `MAX_CONCURRENT_SESSIONS_PER_USER = 2` | **Server (Mongo)**       | HTTP `429 Too many active sessions`.                                                     |
+| **Max session length**           | Hard cap on single session duration                                | `MAX_SESSION_MINUTES = 15`             | **Server janitor/close** | Session is closed when it hits the cap.                                                  |
+| **Idle timeout**                 | Auto-closes sessions with no activity                              | `MAX_SESSION_IDLE_SEC = 300`           | **Server janitor/close** | Session is marked inactive and upstream socket is closed.                                |
+
+### How to tune safely
+
+* Start conservative (lower `USER_MAX_DOLLARS_DAILY`) and raise for trusted tenants.
+* Prefer *per-session* minute limits to keep audio turn cadence reasonable.
+* Keep edge limits ≥ server limits to avoid edge flapping.
+* Monitor: look at `X-RateLimit-*` headers and Upstash analytics; alert on 429 spikes.
+
+---
+
+## 9) Operational examples
+
+* **Decode a `ratelimits._id`** like `ip:203.0.113.5:29367014` with `windowSec=60`:
+
+  * `winStart = new Date((29367014 * 60) * 1000)` → the exact 60s slice start.
+* **Find users who hit the cap** in the last 10 minutes:
+
+  ```js
+  const since = new Date(Date.now() - 10*60*1000);
+  db.ratelimits.aggregate([
+    { $match: { createdAt: { $gte: since }, _id: { $regex: /^user:/ } } },
+    { $group: { _id: "$_id", maxCount: { $max: "$count" } } },
+    { $match: { maxCount: { $gt: Number(process.env.RATE_USER_PER_MIN || 120) } } }
+  ])
+  ```
+
+---
+
+## 10) Optional: visibility mirror for Upstash (debug)
+
+If you *really* want to see edge counters in Mongo during dev, add a `DEBUG_METRICS=true` env and in `middleware.ts` write a tiny doc `{_id: 'edge:<key>:<winId>', count,...}` to `ratelimits`. Keep this *off* in production to avoid write amplification.
 
 </StepCard>
 

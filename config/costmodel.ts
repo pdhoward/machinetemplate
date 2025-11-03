@@ -12,11 +12,10 @@ Audio tokens usually dominate voice calls.
 */
 type Usage = { textIn: number; textOut: number; audioIn: number; audioOut: number }; // tokens
 const PRICES = {
-  // update from pricing page as needed
-  textIn:   0.000005,   // $5 / 1M  (example historical)
-  textOut:  0.00002,    // $20 / 1M (example historical)
-  audioIn:  0.000032,   // $32 / 1M
-  audioOut: 0.000064,   // $64 / 1M
+  textIn:   0.000004,  // $4 / 1M input tokens (example: gpt-realtime)
+  textOut:  0.000016,  // $16 / 1M output tokens
+  audioIn:  0.000032,  // $32 / 1M audio input
+  audioOut: 0.000064,  // $64 / 1M audio output
 };
 export function estimateRealtimeUSD(u: Usage) {
   return (

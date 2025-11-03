@@ -3,6 +3,10 @@ import { cookies } from "next/headers";
 import crypto from "crypto";
 import getMongoConnection from "@/db/connections";
 
+// Consider adding a heartbeat endpoint to update lastSeenAt for active sessions
+// and a periodic job that sets { active:false } when idle > maxSessionIdleSec
+// or duration > maxSessionMinutes.
+
 export function sha256Hex(s: string) {
   return crypto.createHash("sha256").update(s).digest("hex");
 }
