@@ -41,12 +41,24 @@ export async function middleware(req: NextRequest) {
 
   // ---- IP limit (edge drop) ----
   const ipRes = await limitKey(rlIp, `i:${ip}`, rateCfg.ipPerMin);
-  if (!ipRes.ok) return tooMany(429, ipRes);
+  if (!ipRes.ok) {
+    return tooMany(429, ipRes.retryAfter, ipRes.limit, 0, {
+      clearSession: false,
+      code: "RATE_LIMIT_IP",
+      userMessage: `Too many connection attempts from your network. Please wait ${ipRes.retryAfter}s and try again.`,
+    });
+  }
 
   // ---- USER limit (edge drop) ----
   if (userKey) {
     const uRes = await limitKey(rlUser, userKey, rateCfg.userPerMin);
-    if (!uRes.ok) return tooMany(429, uRes, { clearSession: true });
+    if (!uRes.ok) {
+      return tooMany(429, uRes.retryAfter, uRes.limit, 0, {
+        clearSession: true,
+        code: "RATE_LIMIT_USER",
+        userMessage: `You're making requests too quickly. Please wait ${uRes.retryAfter}s and try again.`,
+      });
+    } 
   }
 
   // Pass-through with informative headers (policy only; no personal data)
@@ -93,20 +105,41 @@ async function limitKey(
   return { ok, retryAfter, limit, remaining: Math.max(0, limit - rec.count) };
 }
 
+// middleware.ts
 function tooMany(
   status: number,
-  src: { retryAfter: number; limit: number; remaining: number },
-  opts?: { clearSession?: boolean }
+  retryAfterSec: number,
+  limit: number,
+  remaining: number,
+  opts?: { clearSession?: boolean; code?: string; userMessage?: string }
 ) {
-  const res = NextResponse.json(
-    { error: "Too Many Requests", limit: src.limit, remaining: 0, retryAfter: src.retryAfter },
-    { status }
-  );
-  res.headers.set("Retry-After", String(src.retryAfter));
-  res.headers.set("X-RateLimit-Limit", String(src.limit));
-  res.headers.set("X-RateLimit-Remaining", "0");
+  const payload = {
+    error: "Too Many Requests",
+    code: opts?.code ?? "RATE_LIMIT",
+    userMessage:
+      opts?.userMessage ??
+      (retryAfterSec > 0
+        ? `You're going a bit fast. Please wait ${retryAfterSec}s and try again.`
+        : "You're going a bit fast. Please try again in a moment."),
+    limit,
+    remaining,
+    retryAfter: retryAfterSec,
+  };
+
+  const res = NextResponse.json(payload, { status });
+  res.headers.set("Retry-After", String(retryAfterSec));
+  res.headers.set("X-RateLimit-Limit", String(limit));
+  res.headers.set("X-RateLimit-Remaining", String(remaining));
+
   if (opts?.clearSession) {
-    res.cookies.set("tenant_session", "", { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 0 });
+    res.cookies.set("tenant_session", "", {
+      httpOnly: true,
+      secure: true,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 0,
+    });
   }
   return res;
 }
+

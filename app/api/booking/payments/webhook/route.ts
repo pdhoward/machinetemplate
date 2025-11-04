@@ -1,4 +1,3 @@
-// app/api/booking/[tenantId]/payments/webhook/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import getMongoConnection from "@/db/connections";
@@ -12,12 +11,17 @@ export async function POST(req: NextRequest) {
   const sig = req.headers.get("stripe-signature") || "";
   const rawBody = await req.text(); // string is fine for constructEvent
 
+  // Toggle secret based on environment
+  const endpointSecret = process.env.NODE_ENV === 'development' 
+    ? process.env.STRIPE_VOX_WH_SECRET_DEV!
+    : process.env.STRIPE_VOX_WH_SECRET_PROD!;
+
   let event: Stripe.Event;
   try {
     event = stripe.webhooks.constructEvent(
       rawBody,
       sig,
-      process.env.STRIPE_WEBHOOK_SECRET!
+      endpointSecret
     );
   } catch (err: any) {
     return NextResponse.json({ error: `Webhook signature verification failed: ${err.message}` }, { status: 400 });
@@ -26,6 +30,14 @@ export async function POST(req: NextRequest) {
   try {
     if (event.type === "payment_intent.succeeded") {
       const pi = event.data.object as Stripe.PaymentIntent;
+
+      // Now safe to access metadata (type is narrowed to PaymentIntent)
+      const tenantId = pi.metadata?.tenant_id; // Fix key to 'tenant_id' (lowercase)
+      if (!tenantId) {
+        console.error("[stripe webhook] missing tenant_id in metadata");
+        return NextResponse.json({ received: true }, { status: 200 }); // Or return 400 if you want to error
+      }
+
       const reservationId = (pi.metadata?.reservation_id as string) || null;
 
       if (reservationId) {
@@ -38,6 +50,9 @@ export async function POST(req: NextRequest) {
           { $set: { status: "confirmed", updatedAt: new Date() } }
         );
       }
+    } else {
+      // Optional: Log unhandled events but acknowledge to prevent retries
+      console.log(`Unhandled event type: ${event.type}`);
     }
 
     // Optional: handle other events (payment_failed, refunds, etc.)

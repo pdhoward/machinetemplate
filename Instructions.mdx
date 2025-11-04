@@ -420,6 +420,42 @@ For reconciliation of dollars: periodically poll OpenAI Usage API and reconcile 
 
 ---
 
+heartbeat doc
+
+Heartbeat is a lightweight POST the client sends every ~45 seconds while a realtime session is connected. It serves three purposes:
+
+Liveness tracking — updates realtime_sessions.lastSeenAt so the server knows the session is active.
+
+Auto-cleanup — a background janitor safely closes sessions that have:
+
+been idle longer than MAX_SESSION_IDLE_SEC, or
+
+exceeded MAX_SESSION_MINUTES.
+Heartbeats ensure legit sessions aren’t mistaken for idle.
+
+Concurrency enforcement — accurate liveness lets us enforce MAX_CONCURRENT_SESSIONS_PER_USER and stop “ghost” sessions from consuming slots/cost.
+
+If the browser/tab dies or the network drops, heartbeats stop, and the janitor will mark the session inactive on the next sweep.
+------------------
+
+View the 2 stripe webhooks Here
+
+https://dashboard.stripe.com/acct_1C7jlWHPEZeOT4G4/workbench/webhooks
+
+Note each webhook has a distinct webhook secret ... so are set differently on vercel vs local dev
+
+------------------
+All rate checks and session limits and bot checks throw errors with a uniform signature ...
+return NextResponse.json(
+  { error: "Bot verification failed", 
+    code: "BOT_BLOCKED",
+    userMessage: "We couldn’t verify this device. Please refresh and try again." },
+  { status: 403 }
+);
+
+To locate these security and stress points through the code base simly search on that json structure
+
+----------
 ## 10) Optional: visibility mirror for Upstash (debug)
 
 If you *really* want to see edge counters in Mongo during dev, add a `DEBUG_METRICS=true` env and in `middleware.ts` write a tiny doc `{_id: 'edge:<key>:<winId>', count,...}` to `ratelimits`. Keep this *off* in production to avoid write amplification.

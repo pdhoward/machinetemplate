@@ -10,7 +10,18 @@ import React, {
   useState,
 } from 'react';
 import { WebRTCClient } from '@/lib/realtime';
+import { useToast } from "@/hooks/use-toast";
+import { toastFromApiErrorAndThrow, toastFromUnknownErrorOnce } from "@/lib/toast-errors";
+
 import type { ConversationItem, AgentConfigInput as ClientAgentConfig } from '@/lib/realtime';
+
+class ToastedError extends Error {
+  public readonly __toasted = true;
+  constructor(message: string) {
+    super(message);
+    this.name = "ToastedError";
+  }
+}
 
 /** Align with AgentConfigInput */
 export type AgentConfigInput = {
@@ -79,6 +90,22 @@ export type RealtimeContextValue = {
 
 const RealtimeCtx = createContext<RealtimeContextValue | null>(null);
 
+function extractUsage(ev: any): { text_in: number; text_out: number; audio_in: number; audio_out: number } | null {
+  // Common final event names from different releases
+  const doneType = new Set(['response.completed', 'response.done', 'response.finish']);
+  if (!ev || !doneType.has(ev.type)) return null;
+
+  const u = ev.usage || ev.response?.usage || {};
+  const text_in   = Number(u.text_in  ?? u.input_text_tokens   ?? u.input_tokens   ?? u.textIn   ?? 0);
+  const text_out  = Number(u.text_out ?? u.output_text_tokens  ?? u.output_tokens  ?? u.textOut  ?? 0);
+  const audio_in  = Number(u.audio_in ?? u.input_audio_tokens  ?? u.audioIn        ?? 0);
+  const audio_out = Number(u.audio_out?? u.output_audio_tokens ?? u.audioOut       ?? 0);
+
+  const total = text_in + text_out + audio_in + audio_out;
+  return total > 0 ? { text_in, text_out, audio_in, audio_out } : null;
+}
+
+
 export function RealtimeProvider({
   children,
   options,
@@ -93,6 +120,8 @@ export function RealtimeProvider({
   const maxEvents = options?.maxEventBuffer ?? 500;
 
   const clientRef = useRef<WebRTCClient | null>(null);
+  
+  const heartbeatRef = useRef<number | null>(null);
 
   // We keep an internal, mutable agent snapshot used by tokenProvider
   const agentRef = useRef<AgentConfigInput>(options?.initialAgent ?? { voice: defaultVoice, tools: [] });
@@ -103,6 +132,8 @@ export function RealtimeProvider({
   const [volume, setVolume] = useState(0);
   const [events, setEvents] = useState<any[]>([]);
 
+  const { toast } = useToast();
+
   // wire events buffer + external onServerEvent
   const handleServerEvent = useCallback((ev: any) => {
     setEvents(prev => {
@@ -111,33 +142,59 @@ export function RealtimeProvider({
       return next;
     });
     options?.onServerEvent?.(ev);
+
+    // 2) usage accounting (best-effort)
+    const u = extractUsage(ev);
+    if (u) {
+      fetch('/api/usage/report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          ...u,
+          sm_session_id: clientRef.current?.getSmSessionId() ?? null,
+        }),
+      }).catch(() => {});
+    }
+
   }, [options?.onServerEvent, maxEvents]);
 
-  // Build token provider that posts the *latest* agent snapshot
   const tokenProvider = useCallback(async () => {
-    const agent = agentRef.current || {};
-    const res = await fetch('/api/session', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model,
-        voice: agent.voice ?? defaultVoice,
-        instructions: agent.instructions ?? '',
-        tools: agent.tools ?? [],
-        turn_detection:
-          turnDetection ?? {
-            type: 'server_vad',
-            threshold: 0.5,
-            prefix_padding_ms: 300,
-            silence_duration_ms: 200,
-            create_response: true,
-          },
-      }),
-    });
-    const j = await res.json();
-    if (!res.ok) throw new Error(j.error || 'session error');
-    return j.client_secret.value as string;
-  }, [model, defaultVoice, turnDetection]);
+  const agent = agentRef.current || {};
+  const res = await fetch("/api/session", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({
+      model,
+      voice: agent.voice ?? defaultVoice,
+      instructions: agent.instructions ?? "",
+      tools: agent.tools ?? [],
+      turn_detection:
+        turnDetection ?? {
+          type: "server_vad",
+          threshold: 0.5,
+          prefix_padding_ms: 300,
+          silence_duration_ms: 200,
+          create_response: true,
+        },
+    }),
+  });
+
+  if (!res.ok) {
+    let j: any = {};
+    try { j = await res.json(); } catch {}
+    // ⬇️ One line: toast + throw ToastedError
+    toastFromApiErrorAndThrow(toast, { code: j?.code, userMessage: j?.userMessage, retryAfter: Number(j?.retryAfter ?? 0), error: j?.error }, res.status);
+  }
+
+  const j = await res.json();
+
+  // for heartbeat audit
+  clientRef.current?.setSmSessionId?.(j?.sm_session_id ?? null);
+
+  return j.client_secret.value as string;
+}, [model, defaultVoice, turnDetection, toast]);
 
   // Create a single durable client
   if (!clientRef.current) {
@@ -161,7 +218,18 @@ export function RealtimeProvider({
   const getClient = useCallback(() => clientRef.current!, []);
 
   // --- stable methods (do NOT depend on changing state) ---
-  const connect               = useCallback((p?: { requestMic?: boolean }) => getClient().connect(p), [getClient]);
+      const connect = useCallback(
+      async (p?: { requestMic?: boolean }) => {
+        try {
+          await getClient().connect(p);
+        } catch (err) {
+          // Show toast only if it hasn’t been shown already
+          toastFromUnknownErrorOnce(err, toast);
+        }
+      },
+      [getClient, toast]   // ✅ toast belongs here
+    );
+
   const disconnect            = useCallback(() => getClient().disconnect(), [getClient]);
   const sendText              = useCallback((t: string) => getClient().sendText(t), [getClient]);
   const cancelAssistantSpeech = useCallback(() => getClient().cancelAssistantSpeech(), [getClient]);
@@ -224,6 +292,37 @@ export function RealtimeProvider({
       (window as any).__OPENAI_TOOL_REGISTRY = (window as any).__OPENAI_TOOL_REGISTRY ?? {};
     }
   }, []);
+
+  // heartbeat
+  useEffect(() => {
+    if (status === 'CONNECTED') {
+      // start
+      const run = () => {
+        const id = clientRef.current?.getSmSessionId();
+        if (!id) return; // no session id yet
+        fetch('/api/heartbeat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ sm_session_id: id }),
+        }).catch(() => {});
+      };
+      run(); // send one immediately
+      heartbeatRef.current = window.setInterval(run, 45_000); // every 45s
+    } else {
+      // stop
+      if (heartbeatRef.current != null) {
+        clearInterval(heartbeatRef.current);
+        heartbeatRef.current = null;
+      }
+    }
+    return () => {
+      if (heartbeatRef.current != null) {
+        clearInterval(heartbeatRef.current);
+        heartbeatRef.current = null;
+      }
+    };
+  }, [status]);
 
   // Public API (mirrors your useWebRTC)
   const api = useMemo<RealtimeContextValue>(() => ({

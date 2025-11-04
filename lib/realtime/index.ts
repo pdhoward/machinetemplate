@@ -72,6 +72,9 @@ export class WebRTCClient {
   private functionRegistry: Record<string, (args: any) => Promise<any> | any> = {};
   private ephemeralUserMessageId: string | null = null;
 
+  // session id tracked for usage accounting and heart beat
+  private smSessionId: string | null = null;
+
   private normalizeTools(tools?: ToolDef[]) {
     const arr = Array.isArray(tools) ? tools : [];
     return arr.map(t => ({
@@ -112,6 +115,12 @@ public exposeRegistryToWindow(key: string = "getToolRegistrySnapshot") {
     console.log("[REALTIME WebRTCClient] exposeRegistryToWindow: installed", key, "keys:", Object.keys(now));
   }
 }
+
+  /** RealTime Provider Context stores the server-managed session id here after /api/session */
+  public setSmSessionId(id: string | null) { this.smSessionId = id ?? null; }
+
+  /** RealTime Provider Context reads it to send heartbeats */
+  public getSmSessionId(): string | null { return this.smSessionId; }
 
   getStatus() { return this.status; }
   getConversation() { return [...this.conv]; } 

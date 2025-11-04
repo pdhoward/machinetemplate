@@ -85,7 +85,15 @@ export async function withRateLimit(
   const overSess = sessKey && sessCount > C.sessionPerMin;
 
   if (overIp || overUser || overSess) {
-    const res = NextResponse.json({ error: "Too Many Requests" }, { status: 429 });
+    const res = NextResponse.json(
+      {
+        error: "Too Many Requests",
+        code: (sessKey && sessCount > C.sessionPerMin) ? "RATE_LIMIT_SESSION" :
+              (userKey && userCount > C.userPerMin) ? "RATE_LIMIT_USER" : "RATE_LIMIT_IP",
+        userMessage: "You're making requests too quickly. Please wait a moment and try again.",
+      },
+      { status: 429 }
+    );
     if (session) {
       res.cookies.set("tenant_session", "", { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 0 });
     }
@@ -100,7 +108,15 @@ export async function withRateLimit(
     });
     if (!usageLimit.ok) {
       const res = NextResponse.json(
-        { error: "Quota exceeded", tokens: usageLimit.tokens, dollars: usageLimit.dollars, limits: usageLimit.limits },
+        {
+          error: "Quota exceeded",
+          code: "DAILY_QUOTA",
+          userMessage:
+            "You’ve reached today’s usage limit. Please try again tomorrow, or contact us if you need help completing your booking.",
+          tokens: usageLimit.tokens,
+          dollars: usageLimit.dollars,
+          limits: usageLimit.limits,
+        },
         { status: 429 }
       );
       res.cookies.set("tenant_session", "", { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: 0 });

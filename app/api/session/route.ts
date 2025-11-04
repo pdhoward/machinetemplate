@@ -46,15 +46,20 @@ async function createSession(req: NextRequest) {
   }
 
   // 1) Bot check
-  const verdict = await checkBotId();
-  if (verdict.isBot && !verdict.isVerifiedBot) {
-    return NextResponse.json({ error: "Bot verification failed" }, { status: 403 });
-  }
+  return NextResponse.json(
+      { error: "Bot verification failed", code: "BOT_BLOCKED",
+        userMessage: "We couldn’t verify this device. Please refresh and try again." },
+      { status: 403 }
+    );
 
   // 2) Require OTP session if policy says so
   if (rateCfg.requireAuthForSession) {
     const sess = await getActiveOtpSession(req as any);
-    if (!sess) return NextResponse.json({ error: "No active session" }, { status: 401 });
+    if (!sess) return NextResponse.json(
+      { error: "No active session", code: "AUTH_REQUIRED",
+        userMessage: "Please sign in again to continue." },
+      { status: 401 }
+    );
   }
 
   const body = await safeJson(req as any);
@@ -73,8 +78,16 @@ async function createSession(req: NextRequest) {
   const maxConcurrent = rateCfg.maxConcurrentPerUser;
   const activeCount = await sessions.countDocuments({ emailHash, active: true });
   if (activeCount >= maxConcurrent) {
-    return NextResponse.json({ error: "Too many active sessions" }, { status: 429 });
-  }
+      return NextResponse.json(
+        {
+          error: "Too many active sessions",
+          code: "CONCURRENT_SESSIONS",
+          userMessage:
+            "You already have an active voice session. Please close the other session or wait a moment, then try again.",
+        },
+        { status: 429 }
+      );
+    }
 
    // 5) Create OpenAI Realtime session
   const payload = {
