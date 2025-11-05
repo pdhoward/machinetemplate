@@ -45,12 +45,15 @@ async function createSession(req: NextRequest) {
     return NextResponse.json({ error: "OPENAI_API_KEY not set" }, { status: 500 });
   }
 
-  // 1) Bot check
-  return NextResponse.json(
-      { error: "Bot verification failed", code: "BOT_BLOCKED",
-        userMessage: "We couldn’t verify this device. Please refresh and try again." },
-      { status: 403 }
-    );
+  // 1) Bot check - suspicious automation
+  const verdict = await checkBotId();
+   if (verdict.isBot && !verdict.isVerifiedBot) {
+    return NextResponse.json(
+        { error: "Bot verification failed", code: "BOT_BLOCKED",
+          userMessage: "We couldn’t verify this device. Please refresh and try again." },
+        { status: 403 }
+      );
+  }
 
   // 2) Require OTP session if policy says so
   if (rateCfg.requireAuthForSession) {

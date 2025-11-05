@@ -34,6 +34,8 @@ import { coreTools } from "@/types/tools";
 import promptsJson from "@/promptlibrary/prompts.json"
 import { selectPromptForTenant, buildInstructions } from "@/lib/agent/managePrompts";
 import type { StructuredPrompt } from "@/types/prompt";
+
+import { ErrorBoundary } from '@/components/ErrorBoundary';
  
 // ---------- page ----------
 const App: React.FC = () => {
@@ -283,7 +285,21 @@ return (
 
     {/* Centered stage */}
     <div className="mt-20 p-4 flex-1 flex items-center justify-center">
-      {/* iPhone shell */}
+      {/* iPhone shell with error boundary */}
+      <ErrorBoundary 
+          fallback={
+            <div className="p-4 text-center text-red-500">
+              <h2>Voice Agent Error</h2>
+              <p>Something went wrong with the connection. Please try again.</p>
+              <button 
+                onClick={() => window.location.reload()} // Simple retry (or call disconnect/connect)
+                className="mt-2 px-4 py-2 bg-blue-500 text-white rounded"
+              >
+                Reload
+              </button>
+            </div>
+          }
+        >
       <motion.div
         className="relative flex items-center justify-center"
         initial={{ opacity: 0 }}
@@ -407,6 +423,7 @@ return (
           </button>
         </div>
       </motion.div>
+     </ErrorBoundary>
     </div>
 
     {/* Visual stage host (lives once at page root) */}

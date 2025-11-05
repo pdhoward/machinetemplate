@@ -10,18 +10,10 @@ import React, {
   useState,
 } from 'react';
 import { WebRTCClient } from '@/lib/realtime';
-import { useToast } from "@/hooks/use-toast";
-import { toastFromApiErrorAndThrow, toastFromUnknownErrorOnce } from "@/lib/toast-errors";
+import { toast } from "sonner";
+import { getToastParams, getToastParamsFromUnknownError } from "@/lib/toast-errors";
 
 import type { ConversationItem, AgentConfigInput as ClientAgentConfig } from '@/lib/realtime';
-
-class ToastedError extends Error {
-  public readonly __toasted = true;
-  constructor(message: string) {
-    super(message);
-    this.name = "ToastedError";
-  }
-}
 
 /** Align with AgentConfigInput */
 export type AgentConfigInput = {
@@ -130,9 +122,7 @@ export function RealtimeProvider({
   const [status, setStatus] = useState('DISCONNECTED');
   const [conversation, setConversation] = useState<ConversationItem[]>([]);
   const [volume, setVolume] = useState(0);
-  const [events, setEvents] = useState<any[]>([]);
-
-  const { toast } = useToast();
+  const [events, setEvents] = useState<any[]>([]); 
 
   // wire events buffer + external onServerEvent
   const handleServerEvent = useCallback((ev: any) => {
@@ -160,41 +150,76 @@ export function RealtimeProvider({
   }, [options?.onServerEvent, maxEvents]);
 
   const tokenProvider = useCallback(async () => {
-  const agent = agentRef.current || {};
-  const res = await fetch("/api/session", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify({
-      model,
-      voice: agent.voice ?? defaultVoice,
-      instructions: agent.instructions ?? "",
-      tools: agent.tools ?? [],
-      turn_detection:
-        turnDetection ?? {
-          type: "server_vad",
-          threshold: 0.5,
-          prefix_padding_ms: 300,
-          silence_duration_ms: 200,
-          create_response: true,
-        },
-    }),
-  });
+      const agent = agentRef.current || {};
+      const res = await fetch("/api/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          model,
+          voice: agent.voice ?? defaultVoice,
+          instructions: agent.instructions ?? "",
+          tools: agent.tools ?? [],
+          turn_detection:
+            turnDetection ?? {
+              type: "server_vad",
+              threshold: 0.5,
+              prefix_padding_ms: 300,
+              silence_duration_ms: 200,
+              create_response: true,
+            },
+        }),
+      });
 
-  if (!res.ok) {
-    let j: any = {};
-    try { j = await res.json(); } catch {}
-    // ⬇️ One line: toast + throw ToastedError
-    toastFromApiErrorAndThrow(toast, { code: j?.code, userMessage: j?.userMessage, retryAfter: Number(j?.retryAfter ?? 0), error: j?.error }, res.status);
-  }
+      let body: any = null;
+      let parseError: Error | null = null;
 
-  const j = await res.json();
+      try {
+        body = await res.json(); // Read body ONLY ONCE here
+      } catch (err) {
+        parseError = err instanceof Error ? err : new Error(String(err));
+      }
 
-  // for heartbeat audit
-  clientRef.current?.setSmSessionId?.(j?.sm_session_id ?? null);
+      if (parseError) {
+        // Handle parse failure (e.g., non-JSON body or network issues)
+        const fallbackMsg = 'Failed to parse API response. Please try again.';
+        const params = getToastParamsFromUnknownError(parseError); // Or use a custom params
+        const toastId = `error_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+        toast.error(params.title, { 
+          id: toastId, 
+          description: params.description || fallbackMsg, 
+          duration: 3000, 
+          action: {
+            label: "Close",
+            onClick: () => console.log("Undo"),
+          }, 
+        });
+        throw parseError; // Bubble up to let callers handle (e.g., prevent connection)
+      }
 
-  return j.client_secret.value as string;
-}, [model, defaultVoice, turnDetection, toast]);
+      if (!res.ok) {
+        // Error path: Use the already-parsed body for detailed toast
+        const params = getToastParams(body?.code, body?.userMessage, Number(body?.retryAfter ?? 0), res.status === 429 ? "Please wait a moment and try again." : undefined);
+        const toastId = `error_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+        toast.error(params.title, { 
+          id: toastId, 
+          description: params.description, 
+          duration: 3000, 
+          action: {
+            label: "Close",
+            onClick: () => console.log("Undo"),
+          }, 
+        });
+        const errorMsg = body?.error || body?.message || `HTTP ${res.status}: ${res.statusText}`;
+        throw new Error(errorMsg); // Uncommented: Bubble up to prevent proceeding with invalid token
+      }
+
+      // Success path: Use the parsed body
+      // for heartbeat audit
+      clientRef.current?.setSmSessionId?.(body?.sm_session_id ?? null);
+
+      return body.client_secret.value as string; // success path
+}, [model, defaultVoice, turnDetection]);
 
   // Create a single durable client
   if (!clientRef.current) {
@@ -218,16 +243,24 @@ export function RealtimeProvider({
   const getClient = useCallback(() => clientRef.current!, []);
 
   // --- stable methods (do NOT depend on changing state) ---
-      const connect = useCallback(
-      async (p?: { requestMic?: boolean }) => {
+  const connect = useCallback(async (p?: { requestMic?: boolean }) => {
         try {
           await getClient().connect(p);
         } catch (err) {
-          // Show toast only if it hasn’t been shown already
-          toastFromUnknownErrorOnce(err, toast);
+          const params = getToastParamsFromUnknownError(err);
+          const toastId = `connect_error_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+          toast.error(params.title, { 
+            id: toastId, 
+            description: params.description, 
+            duration: 3000, 
+            action: {
+                label: "Close",
+                onClick: () => console.log("Undo"),
+            }
+          });
         }
       },
-      [getClient, toast]   // ✅ toast belongs here
+      [getClient]   
     );
 
   const disconnect            = useCallback(() => getClient().disconnect(), [getClient]);
