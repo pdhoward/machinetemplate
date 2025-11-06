@@ -17,6 +17,7 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner"; // Added: Import sonner for user-friendly error notifications (assumes it's available from previous refactors)
 
 /* ─────────────────────────────────────────────────────────────
  * Types
@@ -376,8 +377,10 @@ export default function ReservationCheckout(props: Props) {
         }
       } catch (e: any) {
         if (!cancelled) {
+          const msg = e?.message ?? "We couldn’t initialize checkout.";
           setPhase("error");
-          setErr(e?.message ?? "We couldn’t initialize checkout.");
+          setErr(msg);
+          toast.error(msg); // Added: Toast the error for better UX visibility (non-blocking)
           say("I couldn’t start a secure payment session. Let’s try again.");
         }
       }
@@ -404,7 +407,7 @@ export default function ReservationCheckout(props: Props) {
   return (
     <Card
       key={props.reservation_id} // ensure clean reset on reservation switch
-      className="bg-neutral-900 border-neutral-800 w-full mx-auto sm:max-w-[720px]"
+      className="bg-neutral-900 border-neutral-800 w-full mx-auto sm:max-w-[720px] sm:"
     >
       <CardHeader className={props.compact ? "px-4 py-3" : undefined}>
         <CardTitle className="text-base sm:text-lg">{headerTitle}</CardTitle>
@@ -573,6 +576,25 @@ function CheckoutElementsForm({
   const elements = useElements();
   const [submitting, setSubmitting] = React.useState(false);
 
+  // Added: Listen for PaymentElement load errors (as per previous debugging advice)
+  React.useEffect(() => {
+    if (!elements) return;
+    const paymentElement = elements.getElement('payment');
+    if (!paymentElement) return;
+
+    const handleLoadError = (event: any) => {
+      console.error('Payment Element load error:', event); // Log full event for debugging
+      const msg = event?.error?.message || 'Payment form failed to load. Please refresh and try again.';
+      setErr(msg);
+      toast.error(msg); // Added: Toast for visibility
+    };
+
+    paymentElement.on('loaderror', handleLoadError);
+    return () => {
+      paymentElement.off('loaderror', handleLoadError);
+    };
+  }, [elements, setErr]);
+
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!stripe || !elements) return;
@@ -600,19 +622,22 @@ function CheckoutElementsForm({
       const msg = friendlyStripeError(error);
       setPhase("payment_failed");
       setErr(msg);
+      toast.error(msg); // Added: Toast the payment error for better UX
       say(msg);
       setSubmitting(false);
       return;
     }
 
     if (paymentIntent?.status !== "succeeded") {
+      const msg = "Payment did not complete.";
       setPhase("payment_failed");
-      setErr("Payment did not complete.");
+      setErr(msg);
+      toast.error(msg); // Added: Toast for visibility
       say("I couldn’t complete that payment. You can try again.");
       setSubmitting(false);
       return;
     }
-
+    
     // 2) Confirm the reservation in your backend (synchronous UX).
     //    Webhook still updates as a backup; this makes the UI instant.
     try {
@@ -633,11 +658,14 @@ function CheckoutElementsForm({
       }
 
       setPhase("confirmed");
+      toast.success("Reservation confirmed!"); // Added: Success toast for positive feedback
       say("Your payment was approved and the reservation is now confirmed. I’ve emailed your confirmation.");
     } catch (e: any) {
       // If confirm fails, we keep payment but surface a clear message.
+      const msg = e?.message || "We couldn’t finalize the reservation, but your payment was approved.";
       setPhase("error");
-      setErr(e?.message || "We couldn’t finalize the reservation, but your payment was approved.");
+      setErr(msg);
+      toast.error(msg); // Added: Toast the error
       say("Your payment was approved, but I couldn’t finalize the reservation just now. Let’s try again in a moment.");
     } finally {
       setSubmitting(false);
@@ -681,6 +709,7 @@ function MockPaymentBox({
         setPhase("confirming_reservation");
         setTimeout(() => {
           setPhase("confirmed");
+          toast.success("Mock reservation confirmed!"); // Added: Success toast in mock mode for consistency
           say("Your payment was approved and the reservation is confirmed. (mock)");
         }, 600);
       }}

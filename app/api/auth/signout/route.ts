@@ -1,17 +1,32 @@
 // app/api/auth/signout/route.ts
 import { NextResponse, NextRequest } from "next/server";
 import { cookies } from "next/headers";
-import crypto from "crypto";
 import jwt from "jsonwebtoken";
+import { getActiveOtpSession } from "@/app/api/_lib/session"; 
+import { sha256Hex } from "@/app/api/_lib/ids"; 
 import getMongoConnection from "@/db/connections";
 
-function sha256Hex(s: string) {
-  return crypto.createHash("sha256").update(s).digest("hex");
-}
+// function sha256Hex(s: string) {
+//   return crypto.createHash("sha256").update(s).digest("hex");
+// }
+type RealtimeSessionDoc = {
+  _id: string;
+  emailHash: string;
+  startedAt: Date;
+  lastSeenAt: Date;
+  active: boolean;
+};
 
 export async function POST(req: NextRequest) {
   const c = await cookies();
   const token = c.get("tenant_session")?.value || null;
+
+  const sess = await getActiveOtpSession(req as any);
+  if (!sess) {
+    return NextResponse.json({ error: "No active session" }, { status: 401 });
+  }
+
+  const emailHash = sha256Hex(sess.email);
 
   // Always clear the cookie first (client locked out regardless of DB outcome)
   c.set("tenant_session", "", {
@@ -49,7 +64,16 @@ export async function POST(req: NextRequest) {
       { $set: { finalizedAt: now, updatedAt: now } }
     );
 
-    // 2) Close the auth session (also idempotent: only if active)
+     const sessions = db.collection<RealtimeSessionDoc>("realtime_sessions");
+
+      // 2) Update all matching sessions in active session tracker to active: false
+      const updateResult = await sessions.updateMany(
+        { emailHash, active: true },
+        { $set: { active: false } }
+      );
+      console.log(`Updated ${updateResult.modifiedCount} sessions to inactive for emailHash: ${emailHash}`)
+
+    // 2.1) Close the auth session (also idempotent: only if active)
     const doc = await db.collection("auth").findOne({
       kind: "otp_session",
       sessionTokenHash: tokenHash,

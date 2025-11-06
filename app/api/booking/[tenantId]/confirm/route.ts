@@ -8,8 +8,7 @@ export const runtime = "nodejs";
 
 const stripe = new Stripe(process.env.STRIPE_VOX_SECRET_KEY!);
 
-export async function POST(req: NextRequest ) {
-
+export async function POST(req: NextRequest) {
   try {
     const { reservation_id, payment_intent_id } = await req.json();
 
@@ -21,12 +20,18 @@ export async function POST(req: NextRequest ) {
     const pi = await stripe.paymentIntents.retrieve(payment_intent_id);
     if (pi.status !== "succeeded") {
       return NextResponse.json({ error: "PaymentIntent not succeeded" }, { status: 409 });
-    }
+    } 
 
     // 2) Update reservation → confirmed (idempotent)
     const { db } = await getMongoConnection(process.env.DB!, process.env.MAINDBNAME!);
     const Reservations = db.collection("reservations");
-    const _id = ObjectId.createFromTime(reservation_id);
+    let _id;
+    try {
+      _id = new ObjectId(String(reservation_id)); // Changed: Use new ObjectId() for hex string IDs (standard MongoDB format)
+    } catch (idErr) {
+      console.error("Invalid reservation_id:", idErr);
+      return NextResponse.json({ error: "Invalid reservation_id format" }, { status: 400 });
+    }
 
     const doc = await Reservations.findOne({ _id });
     if (!doc) {

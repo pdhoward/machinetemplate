@@ -50,5 +50,8 @@ export function getToastParamsFromUnknownError(err: any): ToastParams {
   if (msg.includes("permission") || msg.includes("notallowederror")) {
     return { title: "Microphone permission needed", description: "Allow mic access to start the voice session.", variant: "error" };
   }
+  if (msg.includes("Too many active sessions") || msg.includes("notallowederror")) {
+    return { title: "Active Session Limit reached", description: "Sign out of current session and sign back in.", variant: "error" };
+  }
   return { title: "Couldn’t connect", description: "We couldn’t start the voice session. Please try again.", variant: "error" };
 }
