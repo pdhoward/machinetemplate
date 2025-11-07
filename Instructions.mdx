@@ -444,6 +444,8 @@ https://dashboard.stripe.com/acct_1C7jlWHPEZeOT4G4/workbench/webhooks
 
 Note each webhook has a distinct webhook secret ... so are set differently on vercel vs local dev
 
+The webhooks need to be enabled in TEST mode ... switch to test then select developer > webhooks to see the defined webhooks and their keys
+
 ------------------
 All rate checks and session limits and bot checks throw errors with a uniform signature ...
 return NextResponse.json(

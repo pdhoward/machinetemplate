@@ -42,15 +42,15 @@ export async function POST(req: NextRequest) {
     // const expectedCents = doc.rate * nights * 100; // depends on your schema
     // if (pi.amount !== expectedCents || pi.currency !== (doc.currency || "usd").toLowerCase()) { ... }
 
-  // HANDLED BY WEBHOOK
-  //   if (doc.status !== "confirmed") {
-  //     await Reservations.updateOne(
-  //       { _id },
-  //       { $set: { status: "confirmed", updatedAt: new Date() } }
-  //     );
-  //   }
+      // HANDLED BY WEBHOOK
+      //   if (doc.status !== "confirmed") {
+      //     await Reservations.updateOne(
+      //       { _id },
+      //       { $set: { status: "confirmed", updatedAt: new Date() } }
+      //     );
+      //   }
 
-  //   return NextResponse.json({ ok: true });
+     return NextResponse.json({ ok: true });
   } catch (e: any) {
     console.error("[confirm] error:", e);
     return NextResponse.json({ error: e?.message || "confirm error" }, { status: 500 });
