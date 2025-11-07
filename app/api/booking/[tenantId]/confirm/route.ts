@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
     const Reservations = db.collection("reservations");
     let _id;
     try {
-      _id = new ObjectId(String(reservation_id)); // Changed: Use new ObjectId() for hex string IDs (standard MongoDB format)
+      _id = new ObjectId(String(reservation_id)); // Use new ObjectId() for hex string IDs (standard MongoDB format)
     } catch (idErr) {
       console.error("Invalid reservation_id:", idErr);
       return NextResponse.json({ error: "Invalid reservation_id format" }, { status: 400 });
@@ -42,14 +42,15 @@ export async function POST(req: NextRequest) {
     // const expectedCents = doc.rate * nights * 100; // depends on your schema
     // if (pi.amount !== expectedCents || pi.currency !== (doc.currency || "usd").toLowerCase()) { ... }
 
-    if (doc.status !== "confirmed") {
-      await Reservations.updateOne(
-        { _id },
-        { $set: { status: "confirmed", updatedAt: new Date() } }
-      );
-    }
+  // HANDLED BY WEBHOOK
+  //   if (doc.status !== "confirmed") {
+  //     await Reservations.updateOne(
+  //       { _id },
+  //       { $set: { status: "confirmed", updatedAt: new Date() } }
+  //     );
+  //   }
 
-    return NextResponse.json({ ok: true });
+  //   return NextResponse.json({ ok: true });
   } catch (e: any) {
     console.error("[confirm] error:", e);
     return NextResponse.json({ error: e?.message || "confirm error" }, { status: 500 });

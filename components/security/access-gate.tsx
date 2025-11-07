@@ -10,7 +10,7 @@ import {
   RotateCcw,
   LogOut,
   Loader2,
-  HelpCircle, // NEW: Added for disclaimer icon
+  HelpCircle, // disclaimer icon
 } from "lucide-react";
 import { decodeJwt } from "jose";
 
