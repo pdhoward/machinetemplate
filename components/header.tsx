@@ -7,7 +7,7 @@ import { ThemeSwitcher } from "@/components/theme-switcher";
 import { MobileNav } from "./mobile-nav";
 import { Badge } from "./ui/badge";
 import { siteConfig } from "@/config/site";
-import { TwitterIcon, StarIcon, BookOpen } from "lucide-react"; // ⬅️ NEW: BookOpen
+import { TwitterIcon, StarIcon, BookOpen } from "lucide-react"; 
 import { motion } from "framer-motion";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { useTranslations } from "@/context/translations-context";
