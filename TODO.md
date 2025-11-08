@@ -73,3 +73,7 @@ Enhance handleServerEvent to call /api/usage/report when extractUsage(ev) return
 
 That’s it. Once you make these changes, open Atlas and you should see usage_daily.dollars/tokens incrementing as you talk to the agent, and realtime_sessions.lastSeenAt marching forward every ~45s.
 
+---------------
+Documentation
+https://fumadocs.dev/
+
