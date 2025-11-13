@@ -1,12 +1,24 @@
 // app/api/booking/[tenantId]/payments/create-intent/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
+import { checkBotId } from "botid/server";
 
 export const runtime = "nodejs"; // Stripe SDK needs Node (not Edge)
 
 const stripe = new Stripe(process.env.STRIPE_VOX_SECRET_KEY!);
 
 export async function POST( req: NextRequest, { params }: { params: Promise<{ tenantId: string }> }) {
+  
+  // Bot check - suspicious automation
+  const verdict = await checkBotId();
+   if (verdict.isBot && !verdict.isVerifiedBot) {
+    return NextResponse.json(
+        { error: "Bot verification failed", code: "BOT_BLOCKED",
+          userMessage: "We couldn’t verify this device. Please refresh and try again." },
+        { status: 403 }
+      );
+  }
+  
   try {
     const { tenantId } = await params;
     const body = await req.json();
