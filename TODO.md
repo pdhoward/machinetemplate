@@ -61,6 +61,8 @@ MultiTenant Actions
 9. Build HTTP Descriptor - info, speakers, etc lots of content -- need an
 api end point with this content
 
+9.1 - Also for the product database we need to sort out the images so that they are an array of strings rather than how currectly structured
+
 10. Build a sales agents for my sales agents
 
 ---------------
