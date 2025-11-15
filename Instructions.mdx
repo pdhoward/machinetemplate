@@ -154,6 +154,24 @@
          }
        }
        ```
+
+
+// HTTP tool descriptors with declarative UI instructions.
+// Runtime behavior (from /api/tools/execute):
+//  - Templating context is { args, response, status, secrets }.
+//  - Strings in url/headers/body/ui are templated via `tpl()` (supports filters).
+//  - Success = http.okField exists (truthy) in response OR HTTP 2xx when okField omitted.
+//  - Then apply ui.onSuccess or ui.onError; payload is templated again with the same ctx.
+//  - `pruneEmpty: true` strips "", null, {}, [] before sending.
+//
+// ✅ Authoring rules (critical):
+//  1) Always reference caller params as {{args.your_field}} (not just {{your_field}}).
+//  2) Coerce numbers/booleans in templates using filters, e.g. {{args.limit | number}}, {{args.include_rates | bool}}.
+//  3) For currency, prefer {{args.currency | default('USD') | upper}}.
+//  4) For nested JSON props, pass structured objects (not stringified), e.g. customer: "{{args.prefill | json}}".
+//  5) Keep okField aligned with the API’s success shape (e.g., "ok" or "clientSecret").
+//  6) If your API needs auth, use {{secrets.*}} in headers; the server will inject the secret.
+ 
  Validation of Data Against SchemaI validated the provided tool descriptors (the actions array) against the Zod schema (HttpToolDescriptorSchema). All 6 tools parse successfully without errors, meaning they are structurally consistent and compatible with the schema. Here's a summary:Key Compatibilities:All tools have required fields like kind: "http_tool", name, http.method, http.urlTemplate.
 parameters match the permissive JSON Schema-ish structure (object with type, required, properties, etc.).
 http configs are valid (methods are correct enums, timeouts are positive integers ≤120000, etc.).

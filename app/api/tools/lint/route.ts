@@ -2,7 +2,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import getMongoConnection  from "@/db/connections";
-import { lintHttpToolDescriptors, LINTER_VERSION } from "@/lib/validator/lint-tools";export const runtime = "nodejs";const BodySchema = z.object({
+import { lintHttpToolDescriptors, LINTER_VERSION } from "@/lib/validator/lint-tools";
+
+export const runtime = "nodejs";
+
+const BodySchema = z.object({
   tenantId: z.string().min(1, "tenantId is required"),
   // Optional filter — pass onlyEnabled=true if you want only enabled tools
   onlyEnabled: z.boolean().default(false),  // Changed default to false to lint all by default
@@ -42,6 +46,8 @@ export async function POST(req: NextRequest) {
     .collection("actions")
     .find(query)
     .toArray();
+
+  //console.log("[admin-lint] query", query, "rows:", rows.length);
 
   // Normalize Mongo-specific fields and number wrappers
   const normalized = rows.map((r) => {

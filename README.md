@@ -89,3 +89,63 @@ https://billingsdk.com/
 
 * resizable node
 https://tiptap.dev/docs/editor/api/resizable-nodeviews
+
+* URL PATTERN API
+https://developer.mozilla.org/en-US/docs/Web/API/URL_Pattern_API
+
+--------------------
+
+1. Use a dedicated subdomain for the Voice Agent SaaS
+Recommended:
+👉 voice.strategicmachines.ai
+
+This becomes:
+
+Your hosted console
+https://voice.strategicmachines.ai/
+
+Your admin portal
+https://voice.strategicmachines.ai/admin/*
+
+Your public APIs used by widgets and clients
+https://voice.strategicmachines.ai/api/*
+
+This keeps the SaaS product separated from:
+
+your marketing site (strategicmachines.ai)
+
+your blog (blog.strategicmachines.ai)
+
+any future properties (docs, status pages, etc.)
+
+Why this is best practice:
+
+✔ Clear boundary between product vs. marketing
+✔ Enables independent scaling / security controls
+✔ Lets you deploy the SaaS on Vercel or any infra
+✔ Lets you use wildcard subdomains later (optional)
+✔ Prevents your main domain from ever leaking internal SaaS cookies
+product structure
+
+3. Your tenant widgets should communicate with:
+👉 https://voice.strategicmachines.ai/api/public/widget/bootstrap
+👉 https://voice.strategicmachines.ai/api/voice/session
+👉 https://voice.strategicmachines.ai/api/tools/execute
+
+And the embed script should load from:
+
+👉 https://voice.strategicmachines.ai/widget.js
+
+or
+
+👉 https://cdn.strategicmachines.ai/voice/widget.js (future CDN)
+
+5. Correct domain structure for your whole ecosystem
+Purpose	Domain/Subdomain	Notes
+Marketing site	https://strategicmachines.ai	Public, SEO, your homepage
+Blog	https://blog.strategicmachines.ai	Already exists, perfect
+Voice Agent SaaS Platform	https://voice.strategicmachines.ai	Console, APIs, widget loader
+Static assets / CDN (future)	https://cdn.strategicmachines.ai	JS bundles, images, voice player components
+Status page (future)	https://status.strategicmachines.ai	Uptime, incidents
+
+This structure is clean, scalable, and used by top SaaS companies.
