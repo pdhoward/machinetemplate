@@ -65,6 +65,9 @@ api end point with this content
 
 10. Build a sales agents for my sales agents
 
+11. monitor
+https://github.com/abhixdd/UptimeKit/
+
 ---------------
 Documentation
 https://fumadocs.dev/
