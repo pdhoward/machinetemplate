@@ -17,10 +17,7 @@ export async function POST(req: NextRequest) {
   // Toggle secret based on environment
   const endpointSecret = process.env.NODE_ENV === 'development' 
     ? process.env.STRIPE_VOX_WH_SECRET_DEV!
-    : process.env.STRIPE_VOX_WH_SECRET_PROD!;
-
-  console.log(`-------------debug webhook---------`);
-  console.log(endpointSecret);
+    : process.env.STRIPE_VOX_WH_SECRET_PROD!; 
 
   let event: Stripe.Event;
   try {
@@ -33,32 +30,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ 
       error: `Webhook signature verification failed: ${err.message}` 
     }, { status: 400 });
-  }
-
-  console.log(`-------------debug webhook---------`);
-  console.log(endpointSecret, event.type);
+  } 
 
   try {
     switch (event.type) {
-      case "payment_intent.created":
-        console.log(`Handled event: ${event.type}`);
+      case "payment_intent.created":       
         // Optional: Add custom logic here (e.g., log creation details)
         break;
 
-      case "payment_intent.payment_failed":
-        console.log(`Handled event: ${event.type}`);
+      case "payment_intent.payment_failed":       
         // Optional: Add custom logic (e.g., notify user, update DB to failed status)
         break;
 
-      case "payment_intent.processing":
-        console.log(`Handled event: ${event.type}`);
+      case "payment_intent.processing":       
         // Optional: Add custom logic (e.g., mark as processing in DB)
         break;
 
-      case "payment_intent.succeeded":
-        console.log(`Handled event: ${event.type}`);
-        const pi = event.data.object as Stripe.PaymentIntent;
-        console.log(JSON.stringify(pi));
+      case "payment_intent.succeeded":       
+        const pi = event.data.object as Stripe.PaymentIntent;    
 
         // Now safe to access metadata (type is narrowed to PaymentIntent)
         const tenantId = pi.metadata?.tenant_id; // Fix key to 'tenant_id' (lowercase)

@@ -211,6 +211,7 @@ export function RealtimeProvider({
           }, 
         });
         const errorMsg = body?.error || body?.message || `HTTP ${res.status}: ${res.statusText}`;
+       
         throw new Error(errorMsg); // Uncommented: Bubble up to prevent proceeding with invalid token
       }
 

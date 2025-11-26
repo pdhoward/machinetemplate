@@ -41,12 +41,14 @@ type RealtimeSessionDoc = {
 };
 
 async function createSession(req: NextRequest) {
+  
   if (!process.env.OPENAI_API_KEY) {
     return NextResponse.json({ error: "OPENAI_API_KEY not set" }, { status: 500 });
   }
 
   // 1) Bot check - suspicious automation
   const verdict = await checkBotId();
+  console.log(`verdict is ${verdict}`)
    if (verdict.isBot && !verdict.isVerifiedBot) {
     return NextResponse.json(
         { error: "Bot verification failed", code: "BOT_BLOCKED",
@@ -80,6 +82,7 @@ async function createSession(req: NextRequest) {
   const sessions = db.collection<RealtimeSessionDoc>("realtime_sessions");
   const maxConcurrent = rateCfg.maxConcurrentPerUser;
   const activeCount = await sessions.countDocuments({ emailHash, active: true });
+  
   if (activeCount >= maxConcurrent) {
       return NextResponse.json(
         {
