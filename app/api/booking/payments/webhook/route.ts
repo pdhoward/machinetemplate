@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import getMongoConnection from "@/db/connections";
 import { ObjectId } from "mongodb";
-import { checkBotId } from "botid/server";
 
 export const runtime = "nodejs"; // Stripe SDK needs Node
 
@@ -11,15 +10,7 @@ const stripe = new Stripe(process.env.STRIPE_VOX_SECRET_KEY!);
 
 export async function POST(req: NextRequest) {
   
-  // Bot check - suspicious automation
-  const verdict = await checkBotId();
-   if (verdict.isBot && !verdict.isVerifiedBot) {
-    return NextResponse.json(
-        { error: "Bot verification failed", code: "BOT_BLOCKED",
-          userMessage: "We couldn’t verify this device. Please refresh and try again." },
-        { status: 403 }
-      );
-  }
+  
   const sig = req.headers.get("stripe-signature") || "";
   const rawBody = await req.text(); // string is fine for constructEvent
 

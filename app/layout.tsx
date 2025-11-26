@@ -11,19 +11,14 @@ import { Analytics } from "@vercel/analytics/react";
 import Providers from "./providers";
 import ToolRegistryPanel from '@/components/ToolRegistryPanel';
 import Banner from "@/components/banner"; // default export above
-import { BotIdClient } from "botid/client";
+
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
 });
 
-const protectedRoutes = [
-  {
-    path: '/api/session',
-    method: 'POST',
-  },
-];
+
 
 export const viewport = {
   width: "device-width",
@@ -56,8 +51,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-     <head>
-        <BotIdClient protect={protectedRoutes}  />
+      <head>      
       </head>
       <body
         className={cn(

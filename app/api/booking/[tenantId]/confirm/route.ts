@@ -13,13 +13,20 @@ export async function POST(req: NextRequest) {
 
   // 1) Bot check - suspicious automation
   const verdict = await checkBotId();
-   if (verdict.isBot && !verdict.isVerifiedBot) {
-    return NextResponse.json(
-        { error: "Bot verification failed", code: "BOT_BLOCKED",
-          userMessage: "We couldn’t verify this device. Please refresh and try again." },
-        { status: 403 }
-      );
-  }
+  //debugging:
+  console.log("BotID verdict", verdict);
+
+  if (verdict.isBot && !verdict.isVerifiedBot && !verdict.bypassed) {
+  return NextResponse.json(
+    {
+      error: "Bot verification failed",
+      code: "BOT_BLOCKED",
+      userMessage: "We couldn’t verify this device. Please refresh and try again.",
+    },
+    { status: 403 }
+  );
+}
+
   try {
     const { reservation_id, payment_intent_id } = await req.json();
 
